@@ -15,13 +15,13 @@
 ## 資料夾結構 (後續會建立)
 ```text
 vibetrip/
-├── App.js               # App 進入點與導覽列設定
+├── App.jsx               # App 進入點與導覽列設定
 ├── src/
 │   ├── screens/         # 四個主要畫面
-│   │   ├── HomeScreen.js
-│   │   ├── ResultScreen.js
-│   │   ├── ArScreen.js
-│   │   └── MapScreen.js
+│   │   ├── HomeScreen.jsx
+│   │   ├── ResultScreen.jsx
+│   │   ├── ArScreen.jsx
+│   │   └── MapScreen.jsx
 │   ├── components/      # 共用的 UI 元件 (如按鈕、卡片)
 │   └── assets/          # 圖片與動畫檔
 ├── package.json
