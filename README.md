@@ -12,11 +12,7 @@
 * 套件管理： `pnpm` (本專案嚴格限制使用 pnpm，請勿使用 npm)
 * 導覽列： React Navigation (Material Top Tabs)
 
-<<<<<<< HEAD
 ## 資料夾結構
-=======
-## 資料夾結構
->>>>>>> 882ca7470cc62b5009b9c887886030dad21fc257
 ```text
 vibetrip/
 ├── App.jsx               # App 進入點與導覽列設定
