@@ -1,5 +1,5 @@
 import { fetchWithTimeout, getDistance } from '../utils/helpers';
-import MRT_MAP from '../../../mrt_map.json'; // 確保路徑正確對應你的專案
+import MRT_MAP from '../../../data/mrt_map.json';
 
 const TDX_CLIENT_ID = process.env.EXPO_PUBLIC_TDX_CLIENT_ID?.trim();
 const TDX_CLIENT_SECRET = process.env.EXPO_PUBLIC_TDX_CLIENT_SECRET?.trim();

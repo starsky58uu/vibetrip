@@ -28,13 +28,6 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({ 
-  appView: { 
-    flex: 1, 
-    backgroundColor: themeColors.background 
-  },
-  loadingContainer: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    backgroundColor: themeColors.background 
-  }
+  appView: { flex: 1, backgroundColor: themeColors.background },
+  loadingContainer: { flex: 1, justifyContent: 'center', backgroundColor: themeColors.background }
 });

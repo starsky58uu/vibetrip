@@ -18,20 +18,26 @@ VibeTrip 是一款結合**直覺盲盒**與**AR 實境導航**的全新旅遊體
 本專案採用高度模組化的 Feature-based 架構，將邏輯與畫面完美分離：
 
 ```text
-src/
-├── assets/             # 靜態資源與自訂字體
-├── constants/          # 全域常數與主題配色
-├── hooks/              # 全域自訂鉤子
-├── navigation/         # 獨立的路由設定
-└── screens/            # 依據功能劃分的畫面模組
-    ├── Home/           # 首頁模組
-    │   ├── components/ # 首頁專屬元件
-    │   ├── hooks/      # 首頁專屬邏輯
-    │   └── HomeScreen.jsx
-    ├── Map/            # 足跡地圖模組
-    ├── AR/             # AR 導航模組
-    ├── BlindBox/       # 盲盒抽取模組
-    └── Weather/        # 天氣詳情模組
+vibetrip/
+├── .env                        # 環境變數
+├── app.config.js               # Expo 設定檔
+├── App.jsx                     # App 根元件
+├── index.js                    # 註冊入口
+├── package.json
+└── src/
+    ├── assets/                 # 靜態資源與自訂字體
+    ├── constants/              # 全域常數與主題配色
+    ├── hooks/                  # 全域自訂鉤子
+    ├── navigation/             # 獨立的路由設定
+    └── screens/                # 依據功能劃分的畫面模組
+        ├── Home/               # 首頁模組
+        │   ├── components/     # 首頁專屬元件
+        │   ├── hooks/          # 首頁專屬邏輯
+        │   └── HomeScreen.jsx
+        ├── Map/                # 足跡地圖模組
+        ├── AR/                 # AR 導航模組
+        ├── BlindBox/           # 盲盒抽取模組
+        └── Weather/            # 天氣詳情模組
 ```
 
 *(註：每個複雜畫面皆已將 API 請求、硬體感測與計算邏輯抽離至專屬的 `hooks/` 與 `utils/` 中，確保 UI 元件的極致純淨。)*
