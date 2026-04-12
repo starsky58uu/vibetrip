@@ -6,7 +6,7 @@ import { useNavigation } from '@react-navigation/native';
 
 import { themeColors as T } from '../../constants/theme';
 import { mockPlans } from '../../data/mockData';
-import { useHomeData } from '../../hooks/useHomeData';
+import { useHomeData } from './hooks/useHomeData';
 import { vibes, originalPurpleMapStyle, CARD_WIDTH, SPACING, SPACER_WIDTH, getWeatherIcon } from './constants/homeData';
 import BubbleCard from './components/BubbleCard';
 
