@@ -200,7 +200,7 @@ const MapScreen = ({ navigation }) => {
         {/* 🌟 探索膠囊 */}
         {mapMode === 'explore' && communitySpots.map((spot) => {
           let iconName = 'help';
-          let markerColor = '#8570ca'; 
+          let markerColor = '#7f69c8'; 
           let iconColor = themeColors.background;
 
           if (spot.isSaved) {
