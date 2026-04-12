@@ -3,10 +3,11 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 
 import { themeColors } from '../constants/theme';
-import HomeScreen from '../screens/HomeScreen';
-import ResultScreen from '../screens/ResultScreen';
-import ArScreen from '../screens/ArScreen';
-import MapScreen from '../screens/MapScreen';
+
+import HomeScreen from '../screens/Home/HomeScreen';
+import ResultScreen from '../screens/BlindBox/ResultScreen';
+import ArScreen from '../screens/AR/ArScreen';
+import MapScreen from '../screens/Map/MapScreen';
 
 const Tab = createBottomTabNavigator();
 

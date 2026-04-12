@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import MRT_MAP from '../mrt_map.json';
+import MRT_MAP from '../../mrt_map.json';
 
 const { width } = Dimensions.get('window');
 

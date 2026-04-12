@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { mockPlans } from '../data/mockData';
+import { mockPlans } from '../../data/mockData';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert,
   Dimensions, Animated, ActivityIndicator, Modal,

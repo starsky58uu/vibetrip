@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack'; 
 
 import TabNavigator from './TabNavigator';
-import WeatherDetailScreen from '../screens/WeatherDetailScreen'; 
+import WeatherDetailScreen from '../screens/Weather/WeatherDetailScreen';
 
 const Stack = createStackNavigator();
 

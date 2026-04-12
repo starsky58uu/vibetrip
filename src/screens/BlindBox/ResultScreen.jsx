@@ -5,7 +5,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Accelerometer } from 'expo-sensors';
 import * as Haptics from 'expo-haptics';
-import { mockPlans } from '../data/mockData';
+import { mockPlans } from '../../data/mockData';
 
 const { width } = Dimensions.get('window');
 
