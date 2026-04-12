@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
-import { DUMMY_COMMUNITY_SPOTS } from '../constants/MapData';
+import { DUMMY_COMMUNITY_SPOTS } from '../constants/mapData';
 
 export const useMapLogic = () => {
   const mapRef = useRef(null);

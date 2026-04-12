@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // 模組化引入
 import { themeColors } from '../../constants/theme';
-import { darkMapStyle } from './constants/MapData';
+import { darkMapStyle } from './constants/mapData';
 import { useMapLogic } from './hooks/useMapLogic';
 
 // 引入我們抽離的 Modals
