@@ -1,88 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Dimensions 
-} from 'react-native';
+import React from 'react'; 
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Accelerometer } from 'expo-sensors';
-import * as Haptics from 'expo-haptics';
-import { mockPlans } from '../../data/mockData';
 
-const { width } = Dimensions.get('window');
-
-const themeColors = {
-  background: '#362360', 
-  textMain: '#E9F3FB',   
-  textSub: '#84A6D3',    
-  accentMain: '#C95E9E', 
-  accentSub: '#C3AED9',  
-};
+// 模組化引入
+import { themeColors } from '../../constants/theme';
+import { useBlindBoxLogic } from './hooks/useBlindBoxLogic';
 
 const ResultScreen = ({ route, navigation }) => {
-  // 🌟 從路由取得資料，並解構出 vibeKey
-  const { plan, vibeKey, timestamp } = route.params || {};
-  const [currentPlan, setCurrentPlan] = useState(plan || { title: '驚喜盲盒', items: [] });
-  
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const lastShakeDate = useRef(Date.now());
-
-  // 🌟 監聽首頁傳來的新行程（當點擊底部大按鈕跳轉時）
-  useEffect(() => {
-    if (plan) {
-      console.log("✅ 收到新行程：", plan.title);
-      setCurrentPlan(plan);
-      
-      // 入場動畫
-      fadeAnim.setValue(0);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true
-      }).start();
-    }
-  }, [timestamp]); // 👈 透過時間戳記判斷是不是新的一次抽取
-
-  // 🌟 搖一搖感測器邏輯
-  useEffect(() => {
-    Accelerometer.setUpdateInterval(50);
-    const subscription = Accelerometer.addListener(({ x, y, z }) => {
-      const acceleration = Math.sqrt(x * x + y * y + z * z);
-      const now = Date.now();
-
-      // 判斷搖晃：門檻 2.0，冷卻時間 1 秒
-      if (acceleration > 2.0 && now - lastShakeDate.current > 1000) {
-        lastShakeDate.current = now;
-        handleReshuffle();
-      }
-    });
-
-    return () => subscription && subscription.remove();
-  }, [currentPlan, vibeKey]); // 👈 這裡要監聽，確保 handleReshuffle 抓得到最新的 Key
-
-  // 🌟 搖一搖洗牌邏輯
-  const handleReshuffle = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    // 1. 動畫開始
-    Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
-      
-      // 2. 根據「目前的類別」抽新的
-      const category = vibeKey || 'cafe';
-      const options = mockPlans[category] || mockPlans['cafe'];
-      
-      // 隨機抽一個跟現在不一樣的行程
-      let nextPlan = options[Math.floor(Math.random() * options.length)];
-      if (options.length > 1) {
-        while (nextPlan.title === currentPlan.title) {
-          nextPlan = options[Math.floor(Math.random() * options.length)];
-        }
-      }
-
-      setCurrentPlan(nextPlan);
-
-      // 3. 動畫結束
-      Animated.timing(fadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
-    });
-  };
+  const { currentPlan, fadeAnim } = useBlindBoxLogic(route.params);
 
   return (
     <View style={styles.container}>
@@ -104,7 +29,7 @@ const ResultScreen = ({ route, navigation }) => {
                 </View>
                 <View style={[styles.eventCard, { backgroundColor: item.color }]}>
                   <View style={styles.cardHeader}>
-                    <Ionicons name={item.icon} size={22} color="#362360" />
+                    <Ionicons name={item.icon} size={22} color={themeColors.background} />
                     <Text style={styles.activityTitle}>{item.activity}</Text>
                   </View>
                   <Text style={styles.activityDesc}>{item.desc}</Text>
@@ -123,7 +48,7 @@ const ResultScreen = ({ route, navigation }) => {
             activeOpacity={0.9}
             onPress={() => navigation.navigate('AR')}
           >
-            <Ionicons name="scan" size={22} color="#362360" />
+            <Ionicons name="scan" size={22} color={themeColors.background} />
             <Text style={styles.arButtonText}>開啟 AR 實境導航</Text>
           </TouchableOpacity>
         </ScrollView>
@@ -132,17 +57,17 @@ const ResultScreen = ({ route, navigation }) => {
   );
 };
 
-
+// 樣式大掃除：所有寫死的 '#362360', '#1E1238' 全部替換成 themeColors
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: themeColors.background, paddingTop: 60 },
   headerBadge: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#E9F3FB', 
+    flexDirection: 'row', alignItems: 'center', backgroundColor: themeColors.textMain, 
     paddingVertical: 8, paddingHorizontal: 16, borderRadius: 14, marginLeft: 24, alignSelf: 'flex-start',
-    borderWidth: 2.5, borderColor: '#1E1238', shadowColor: themeColors.accentMain, shadowOffset: { width: 4, height: 4 }, shadowOpacity: 1, shadowRadius: 0,
+    borderWidth: 2.5, borderColor: themeColors.border, shadowColor: themeColors.accentMain, shadowOffset: { width: 4, height: 4 }, shadowOpacity: 1, shadowRadius: 0,
     zIndex: 10,
   },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: themeColors.accentMain, marginRight: 8 },
-  headerText: { fontFamily: 'VibePixel', color: '#362360', fontSize: 12 },
+  headerText: { fontFamily: 'VibePixel', color: themeColors.background, fontSize: 12 },
   scrollContent: { paddingHorizontal: 20, paddingTop: 40, paddingBottom: 120 },
   pageTitle: { 
     fontFamily: 'VibePixel', fontSize: 24, color: themeColors.textMain, 
@@ -161,26 +86,26 @@ const styles = StyleSheet.create({
   timelineItem: { flexDirection: 'row', marginBottom: 30, alignItems: 'flex-start' },
   timeMarker: {
     width: 60, paddingVertical: 5, borderRadius: 10, alignItems: 'center',
-    borderWidth: 2, borderColor: '#1E1238', zIndex: 2,
+    borderWidth: 2, borderColor: themeColors.border, zIndex: 2,
   },
-  timeText: { fontFamily: 'VibePixel', fontSize: 11, color: '#362360' },
+  timeText: { fontFamily: 'VibePixel', fontSize: 11, color: themeColors.background },
   eventCard: {
     flex: 1, marginLeft: 15, borderRadius: 24, padding: 16,
-    borderWidth: 2.5, borderColor: '#1E1238',
-    shadowColor: '#1E1238', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 1, shadowRadius: 0,
+    borderWidth: 2.5, borderColor: themeColors.border,
+    shadowColor: themeColors.border, shadowOffset: { width: 4, height: 4 }, shadowOpacity: 1, shadowRadius: 0,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  activityTitle: { fontFamily: 'VibePixel', fontSize: 16, color: '#362360', marginLeft: 8 },
+  activityTitle: { fontFamily: 'VibePixel', fontSize: 16, color: themeColors.background, marginLeft: 8 },
   activityDesc: { fontFamily: 'VibePixel', fontSize: 12, color: 'rgba(54, 35, 96, 0.8)', lineHeight: 18 },
   shakeHintContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 25, marginBottom: 15 },
   shakeText: { fontFamily: 'VibePixel', fontSize: 13, color: themeColors.textSub, marginLeft: 10 },
   arButton: {
     backgroundColor: themeColors.accentMain, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     paddingVertical: 18, borderRadius: 16, gap: 10,
-    borderWidth: 2.5, borderColor: '#1E1238',
+    borderWidth: 2.5, borderColor: themeColors.border,
     shadowColor: themeColors.textMain, shadowOffset: { width: 5, height: 5 }, shadowOpacity: 1, shadowRadius: 0,
   },
-  arButtonText: { fontFamily: 'VibePixel', fontSize: 17, color: '#362360' },
+  arButtonText: { fontFamily: 'VibePixel', fontSize: 17, color: themeColors.background },
 });
 
 export default ResultScreen;
