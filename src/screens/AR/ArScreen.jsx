@@ -7,7 +7,6 @@ import { CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// 模組化引入
 import { themeColors as T } from '../../constants/theme';
 import { CATEGORY_MAP } from './constants/arData';
 import { fmtSec } from './utils/helpers';
@@ -18,7 +17,7 @@ const ArScreen = ({ navigation }) => {
 
   const {
     permission, viewMode, setViewMode, loading,
-    searchQuery, setSearchQuery, candidates, selectedIdx, targetCoords,
+    searchQuery, setSearchQuery, candidates, setCandidates, selectedIdx, setSelectedIdx, targetCoords, setTargetCoords,
     transportOptions, selectedModeIdx, routeSteps,
     setCurrentStepIdx, navInstruction, realTimeInfo, setRealTimeInfo,
     refreshingBike,
@@ -43,12 +42,15 @@ const ArScreen = ({ navigation }) => {
     <View style={styles.root}>
       <CameraView style={StyleSheet.absoluteFillObject} facing="back" />
       
-      {/* 頂部搜尋列與導航條 */}
       <View style={[styles.topBar, { paddingTop: insets.top + 6 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => {
           if (viewMode === 'NAV') resetAll();
           else if (viewMode === 'PREVIEW') setViewMode('DETAIL');
-          else if (viewMode === 'DETAIL') { setViewMode('SEARCH'); resetAll(); }
+          else if (viewMode === 'DETAIL') { setViewMode('SEARCH'); setSelectedIdx(null); setTargetCoords(null); }
+          else if (viewMode === 'SEARCH' && candidates.length > 0) { 
+            setCandidates([]); 
+            setSearchQuery(''); 
+          }
           else navigation.goBack();
         }}>
           <Ionicons name="chevron-back" size={20} color={T.background} />
@@ -56,55 +58,37 @@ const ArScreen = ({ navigation }) => {
         
         {viewMode === 'SEARCH' ? (
           <View style={styles.searchWrap}>
-            <TextInput 
-              style={styles.input} placeholder="要去哪裡？" placeholderTextColor={T.textSub} 
-              value={searchQuery} onChangeText={setSearchQuery} onSubmitEditing={() => performSearch(searchQuery)} returnKeyType="search" 
-            />
-            <TouchableOpacity style={styles.searchBtn} onPress={() => performSearch(searchQuery)}>
-              <Ionicons name="search" size={18} color={T.background} />
-            </TouchableOpacity>
+            <TextInput style={styles.input} placeholder="要去哪裡？" placeholderTextColor={T.textSub} value={searchQuery} onChangeText={setSearchQuery} onSubmitEditing={() => performSearch(searchQuery)} returnKeyType="search" />
+            <TouchableOpacity style={styles.searchBtn} onPress={() => performSearch(searchQuery)}><Ionicons name="search" size={18} color={T.background} /></TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.topTitleWrap}>
-            <View style={styles.dot} />
-            <Text style={styles.topTitle} numberOfLines={1}>
-              {viewMode === 'NAV' ? '導航中' : viewMode === 'PREVIEW' ? '確認路線' : candidates[selectedIdx]?.name}
-            </Text>
-          </View>
+          <View style={styles.topTitleWrap}><View style={styles.dot} /><Text style={styles.topTitle} numberOfLines={1}>{viewMode === 'NAV' ? '導航中' : viewMode === 'PREVIEW' ? '確認路線' : candidates[selectedIdx]?.name}</Text></View>
         )}
       </View>
 
-      {/* AR 箭頭 */}
       <View style={styles.arArea} pointerEvents="none">
         {targetCoords && (
           <View style={[styles.arrowWrap, { transform: [{ rotate: `${arrowAngle}deg` }] }]}>
-            <View style={styles.arrowShadow} />
-            <View style={styles.arrowRing} />
-            <Ionicons name="navigate" size={64} color={T.accentMain} />
+            <View style={styles.arrowCore}>
+              <Ionicons 
+                name="navigate" 
+                size={110} 
+                color={T.textMain} 
+                style={{ transform: [{ rotate: '-45deg' }] }} 
+              />
+            </View>
           </View>
         )}
       </View>
 
-      {/* 底部面板 */}
       <View style={[styles.panel, { paddingBottom: bottomPad + 4 }]}>
-        
-        {/* 搜尋結果模式 */}
         {viewMode === 'SEARCH' && (
           candidates.length > 0 ? (
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {candidates.map((item, idx) => (
                 <TouchableOpacity key={idx} style={styles.resultRow} onPress={() => onSelectCandidate(idx)}>
-                  <View style={styles.resultLeft}>
-                    <View style={styles.dot} />
-                    <View>
-                      <Text style={styles.resultName}>{item.name}</Text>
-                      {item.rating != null && (<Text style={styles.resultMeta}>{'★'.repeat(Math.round(item.rating))}  {item.rating}</Text>)}
-                    </View>
-                  </View>
-                  <View style={styles.resultRight}>
-                    <Text style={styles.resultDist}>{item.dist < 1000 ? `${item.dist}m` : `${(item.dist/1000).toFixed(1)}km`}</Text>
-                    <Ionicons name="chevron-forward" size={15} color={T.textSub} />
-                  </View>
+                  <View style={styles.resultLeft}><View style={styles.dot} /><View><Text style={styles.resultName}>{item.name}</Text>{item.rating != null && (<Text style={styles.resultMeta}>{'★'.repeat(Math.round(item.rating))}  {item.rating}</Text>)}</View></View>
+                  <View style={styles.resultRight}><Text style={styles.resultDist}>{item.dist < 1000 ? `${item.dist}m` : `${(item.dist/1000).toFixed(1)}km`}</Text><Ionicons name="chevron-forward" size={15} color={T.textSub} /></View>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -123,7 +107,6 @@ const ArScreen = ({ navigation }) => {
           ) : null
         )}
 
-        {/* 路線選擇模式 */}
         {viewMode === 'DETAIL' && selectedIdx != null && (
           <View>
             <Text style={styles.panelLabel}>選擇交通方案</Text>
@@ -149,7 +132,6 @@ const ArScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* 路線預覽模式 */}
         {viewMode === 'PREVIEW' && activeOpt && (
           <View style={{ maxHeight: 250 }}>
             <View style={styles.previewHeader}>
@@ -170,7 +152,6 @@ const ArScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* 導航中模式 */}
         {viewMode === 'NAV' && (
           <View>
             <View style={styles.navBox}><Text style={styles.navInstr}>{navInstruction}</Text></View>
@@ -196,8 +177,6 @@ const ArScreen = ({ navigation }) => {
           </View>
         )}
       </View>
-      
-      {/* 讀取疊加層 */}
       {loading && <View style={styles.loadingOverlay}><ActivityIndicator color={T.accentMain} size="large" /><Text style={styles.loadingText}>運算中...</Text></View>}
     </View>
   );
@@ -217,11 +196,16 @@ const styles = StyleSheet.create({
   catBarStatic: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 10 },
   catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: T.accentSub, borderWidth: 2.5, borderColor: T.border },
   catText: { color: T.background, fontSize: 13, fontFamily: 'VibePixel' },
-  arArea: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
-  arrowWrap: { width: 110, height: 110, alignItems: 'center', justifyContent: 'center' },
-  arrowShadow: { position: 'absolute', width: 96, height: 96, backgroundColor: T.border, top: 8, left: 8 },
-  arrowRing: { position: 'absolute', width: 96, height: 96, backgroundColor: 'rgba(54,35,96,0.7)', borderWidth: 3, borderColor: T.border },
-  loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(54,35,96,0.75)', alignItems: 'center', justifyContent: 'center', zIndex: 200 },
+  arArea: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 200 },
+  arrowWrap: { width: 280, height: 280, alignItems: 'center', justifyContent: 'center' },
+  arrowCore: { 
+    width: 250, height: 250, borderRadius: 125, 
+    backgroundColor: 'rgba(54,35,96,0.3)', 
+    borderWidth: 3, borderColor: T.accentMain, 
+    alignItems: 'center', justifyContent: 'center', 
+    shadowColor: T.accentMain, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 15, elevation: 10 
+  },
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(54,35,96,0.75)', alignItems: 'center', justifyContent: 'center', zIndex: 200 },  
   loadingText: { color: T.textMain, fontFamily: 'VibePixel', fontSize: 15, marginTop: 12 },
   panel: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 100, backgroundColor: 'rgba(54,35,96,0.88)', borderTopLeftRadius: 32, borderTopRightRadius: 32, borderTopWidth: 2, borderColor: 'rgba(233,243,251,0.18)', paddingHorizontal: 20, paddingTop: 20, maxHeight: '65%' },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: T.accentMain },

@@ -72,19 +72,36 @@ export const useArLogic = () => {
     Keyboard.dismiss();
     setLoading(true); setCandidates([]); setTransportOptions([]);
     try {
-      let url  = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${loc.latitude},${loc.longitude}&language=zh-TW&key=${GOOGLE_API_KEY}`;
-      url += CATEGORY_MAP[category] ? `&radius=2000&type=${CATEGORY_MAP[category].type}` : `&radius=50000&keyword=${encodeURIComponent(category)}`;
-      let res  = await fetchWithTimeout(url);
-      let data = await res.json();
-      if (!data.results?.length) {
-        const tUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(category)}&location=${loc.latitude},${loc.longitude}&language=zh-TW&key=${GOOGLE_API_KEY}`;
-        res = await fetchWithTimeout(tUrl); data = await res.json();
-      }
-      const parsed = (data.results || []).map(p => ({
-        name: p.name, latitude: p.geometry.location.lat, longitude: p.geometry.location.lng,
-        rating: p.rating ?? null, dist: getDistance(loc.latitude, loc.longitude, p.geometry.location.lat, p.geometry.location.lng),
-      })).sort((a, b) => a.dist - b.dist).slice(0, 5);
-      setCandidates(parsed);
+        let url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${loc.latitude},${loc.longitude}&language=zh-TW&opennow=true&key=${GOOGLE_API_KEY}`;
+
+        if (CATEGORY_MAP[category]) {
+            url += `&radius=2000&type=${CATEGORY_MAP[category].type}`;
+            if (CATEGORY_MAP[category].keyword) {
+                url += `&keyword=${encodeURIComponent(CATEGORY_MAP[category].keyword)}`;
+            }
+        } else {
+            url += `&radius=50000&keyword=${encodeURIComponent(category)}`;
+        }
+
+        let res = await fetchWithTimeout(url);
+        let data = await res.json();
+
+        if (!data.results?.length) {
+            const tUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(category)}&location=${loc.latitude},${loc.longitude}&language=zh-TW&opennow=true&key=${GOOGLE_API_KEY}`;
+            res = await fetchWithTimeout(tUrl);
+            data = await res.json();
+        }
+        const parsed = (data.results || [])
+            .map((p) => ({
+                name: p.name,
+                latitude: p.geometry.location.lat,
+                longitude: p.geometry.location.lng,
+                rating: p.rating ?? null,
+                dist: getDistance(loc.latitude, loc.longitude, p.geometry.location.lat, p.geometry.location.lng),
+            }))
+            .sort((a, b) => a.dist - b.dist)
+            .slice(0, 5);
+        setCandidates(parsed);
     } catch (err) { Alert.alert('連線失敗', '請檢查網路狀態'); } finally { setLoading(false); }
   };
 
