@@ -130,15 +130,24 @@ const getMrtETASec = async (token, stationName, walkSec = 0, systemCode = 'TRTC'
 // 🎯 使用 NearBy 取代 City/Taipei，解決跨縣市抓不到車位的 Bug
 const getNearestYouBike = async (lat, lon, token, isStart) => {
   try {
-    const stUrl = `https://tdx.transportdata.tw/api/basic/v2/Bike/Station/NearBy?$spatialFilter=nearby(${lat},${lon},1000)&$format=JSON`;
+    // 1. 取得台北市「所有」站點
+    const stUrl = `https://tdx.transportdata.tw/api/basic/v2/Bike/Station/City/Taipei?$format=JSON`;
     const stRes = await fetchWithTimeout(stUrl, { headers: { Authorization: `Bearer ${token}` } });
     const stData = await stRes.json();
     if (!Array.isArray(stData) || !stData.length) return null;
 
-    const avUrl = `https://tdx.transportdata.tw/api/basic/v2/Bike/Availability/NearBy?$spatialFilter=nearby(${lat},${lon},1000)&$format=JSON`;
+    // 2. 取得台北市「所有」站點即時車況
+    const avUrl = `https://tdx.transportdata.tw/api/basic/v2/Bike/Availability/City/Taipei?$format=JSON`;
     const avRes = await fetchWithTimeout(avUrl, { headers: { Authorization: `Bearer ${token}` } });
     const avData = await avRes.json();
 
+    // 3. 檢查 avData 是否為陣列，若不是則印出 TDX 真正的錯誤訊息
+    if (!Array.isArray(avData)) {
+      console.log('❌ 取得車況失敗，TDX 回傳內容為:', avData);
+      return null;
+    }
+
+    // 4. 組合資料，並在「本地端」計算距離
     const stations = stData.map(st => {
       const av = avData.find(a => a.StationUID === st.StationUID);
       return {
@@ -149,11 +158,18 @@ const getNearestYouBike = async (lat, lon, token, isStart) => {
       };
     });
 
-    const validStations = stations.filter(s => isStart ? s.AvailableRentBikes > 0 : s.AvailableReturnBikes > 0);
+    // 5. 在本地端過濾...
+    const validStations = stations.filter(s => 
+      s.dist <= 1000 && (isStart ? s.AvailableRentBikes > 0 : s.AvailableReturnBikes > 0)
+    );
+
     if (!validStations.length) return null;
 
     return validStations.sort((a, b) => a.dist - b.dist)[0];
-  } catch (err) { return null; }
+  } catch (err) { 
+    console.log('YouBike API 錯誤:', err);
+    return null; 
+  }
 };
 
 // ── Component ────────────────────────────────────────────────────────────────
