@@ -23,9 +23,10 @@ const T = {
 };
 
 const CATEGORY_MAP = {
-  '超商':  { type: 'convenience_store', icon: 'storefront-outline' },
-  '咖啡廳': { type: 'cafe',               icon: 'cafe-outline' },
-  '速食':  { type: 'meal_takeaway',      icon: 'fast-food-outline' },
+  '超商':  { type: 'convenience_store', keyword: '', icon: 'storefront-outline' },
+  '咖啡廳': { type: 'cafe',              keyword: '', icon: 'cafe-outline' },
+  '餐廳':  { type: 'restaurant',        keyword: '', icon: 'restaurant-outline' },
+  '飲料店': { type: 'store',             keyword: '手搖飲', icon: 'water-outline' },
 };
 
 let cachedToken = null;
@@ -127,27 +128,22 @@ const getMrtETASec = async (token, stationName, walkSec = 0, systemCode = 'TRTC'
   } catch (err) { return null; }
 };
 
-// 🎯 使用 NearBy 取代 City/Taipei，解決跨縣市抓不到車位的 Bug
 const getNearestYouBike = async (lat, lon, token, isStart) => {
   try {
-    // 1. 取得台北市「所有」站點
     const stUrl = `https://tdx.transportdata.tw/api/basic/v2/Bike/Station/City/Taipei?$format=JSON`;
     const stRes = await fetchWithTimeout(stUrl, { headers: { Authorization: `Bearer ${token}` } });
     const stData = await stRes.json();
     if (!Array.isArray(stData) || !stData.length) return null;
 
-    // 2. 取得台北市「所有」站點即時車況
     const avUrl = `https://tdx.transportdata.tw/api/basic/v2/Bike/Availability/City/Taipei?$format=JSON`;
     const avRes = await fetchWithTimeout(avUrl, { headers: { Authorization: `Bearer ${token}` } });
     const avData = await avRes.json();
 
-    // 3. 檢查 avData 是否為陣列，若不是則印出 TDX 真正的錯誤訊息
     if (!Array.isArray(avData)) {
       console.log('❌ 取得車況失敗，TDX 回傳內容為:', avData);
       return null;
     }
 
-    // 4. 組合資料，並在「本地端」計算距離
     const stations = stData.map(st => {
       const av = avData.find(a => a.StationUID === st.StationUID);
       return {
@@ -158,7 +154,6 @@ const getNearestYouBike = async (lat, lon, token, isStart) => {
       };
     });
 
-    // 5. 在本地端過濾...
     const validStations = stations.filter(s => 
       s.dist <= 1000 && (isStart ? s.AvailableRentBikes > 0 : s.AvailableReturnBikes > 0)
     );
@@ -229,12 +224,22 @@ const ArScreen = ({ navigation }) => {
     Keyboard.dismiss();
     setLoading(true); setCandidates([]); setTransportOptions([]);
     try {
-      let url  = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${loc.latitude},${loc.longitude}&language=zh-TW&key=${GOOGLE_API_KEY}`;
-      url += CATEGORY_MAP[category] ? `&radius=2000&type=${CATEGORY_MAP[category].type}` : `&radius=50000&keyword=${encodeURIComponent(category)}`;
+      let url  = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${loc.latitude},${loc.longitude}&language=zh-TW&opennow=true&key=${GOOGLE_API_KEY}`;
+      
+      if (CATEGORY_MAP[category]) {
+        url += `&radius=2000&type=${CATEGORY_MAP[category].type}`;
+        if (CATEGORY_MAP[category].keyword) {
+          url += `&keyword=${encodeURIComponent(CATEGORY_MAP[category].keyword)}`;
+        }
+      } else {
+        url += `&radius=50000&keyword=${encodeURIComponent(category)}`;
+      }
+
       let res  = await fetchWithTimeout(url);
       let data = await res.json();
+      
       if (!data.results?.length) {
-        const tUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(category)}&location=${loc.latitude},${loc.longitude}&language=zh-TW&key=${GOOGLE_API_KEY}`;
+        const tUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(category)}&location=${loc.latitude},${loc.longitude}&language=zh-TW&opennow=true&key=${GOOGLE_API_KEY}`;
         res = await fetchWithTimeout(tUrl); data = await res.json();
       }
       const parsed = (data.results || []).map(p => ({
@@ -334,7 +339,6 @@ const ArScreen = ({ navigation }) => {
         youbikePromise().catch(() => ({ mode: 'youbike', title: 'YouBike', icon: 'bicycle-outline', isAvailable: false, reason: '規劃失敗' }))
       ]);
 
-      // 確保順序固定：公共運輸、YouBike、步行
       const orderKeys = ['transit', 'youbike', 'walking'];
       const finalOrder = [];
       orderKeys.forEach(key => {
@@ -449,6 +453,11 @@ const ArScreen = ({ navigation }) => {
           if (viewMode === 'NAV') resetAll();
           else if (viewMode === 'PREVIEW') setViewMode('DETAIL');
           else if (viewMode === 'DETAIL') { setViewMode('SEARCH'); setSelectedIdx(null); setTargetCoords(null); }
+          // 🎯 這裡新增了在 SEARCH 模式但已有結果時，按返回會清空狀態回到快捷鍵選單
+          else if (viewMode === 'SEARCH' && candidates.length > 0) { 
+            setCandidates([]); 
+            setSearchQuery(''); 
+          }
           else navigation.goBack();
         }}>
           <Ionicons name="chevron-back" size={20} color={T.bg} />
@@ -463,9 +472,20 @@ const ArScreen = ({ navigation }) => {
         )}
       </View>
 
+      {/* 🎯 依照需求更新：放大兩倍、深紫底30%透明度 */}
       <View style={styles.arArea} pointerEvents="none">
         {targetCoords && (
-          <View style={[styles.arrowWrap, { transform: [{ rotate: `${arrowAngle}deg` }] }]}><View style={styles.arrowShadow} /><View style={styles.arrowRing} /><Ionicons name="navigate" size={64} color={T.accent} /></View>
+          <View style={[styles.arrowWrap, { transform: [{ rotate: `${arrowAngle}deg` }] }]}>
+            <View style={styles.arrowCore}>
+              {/* 🎯 改用流線型的導航紙飛機 (navigate)，並校正 45 度讓它朝上 */}
+              <Ionicons 
+                name="navigate" 
+                size={110} 
+                color={T.textMain} 
+                style={{ transform: [{ rotate: '-45deg' }] }} 
+              />
+            </View>
+          </View>
         )}
       </View>
 
@@ -491,12 +511,11 @@ const ArScreen = ({ navigation }) => {
                         </TouchableOpacity>
                     ))}
                 </View>
-                <Text style={styles.hint}>搜尋地名或選擇上方類別 ✨</Text>
+                <Text style={styles.hint}>搜尋地名或選擇上方類別</Text>
             </View>
           ) : null
         )}
 
-        {/* 🎯 乾淨的橫向三按鈕 */}
         {viewMode === 'DETAIL' && selectedIdx != null && (
           <View>
             <Text style={styles.panelLabel}>選擇交通方案</Text>
@@ -586,12 +605,27 @@ const styles = StyleSheet.create({
   catBarStatic: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 10 },
   catChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: T.accentSub, borderWidth: 2.5, borderColor: T.border },
   catText: { color: T.bg, fontSize: 13, fontFamily: 'VibePixel' },
-  arArea: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100 },
-  arrowWrap: { width: 110, height: 110, alignItems: 'center', justifyContent: 'center' },
-  arrowShadow: { position: 'absolute', width: 96, height: 96, backgroundColor: T.border, top: 8, left: 8 },
-  arrowRing: { position: 'absolute', width: 96, height: 96, backgroundColor: 'rgba(54,35,96,0.7)', borderWidth: 3, borderColor: T.border },
-  loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(54,35,96,0.75)', alignItems: 'center', justifyContent: 'center', zIndex: 200 },
-  loadingText: { color: T.textMain, fontFamily: 'VibePixel', fontSize: 15, marginTop: 12 },
+  
+  // 🎯 重新設計了 AR 箭頭的樣式與排版高度
+  arArea: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 200 }, // 大幅上移避免擋到
+  arrowWrap: { width: 280, height: 280, alignItems: 'center', justifyContent: 'center' }, // 尺寸放大兩倍 (140 -> 280)
+  arrowCore: { 
+    width: 250, 
+    height: 250, 
+    borderRadius: 125, // 尺寸放大兩倍 (80 -> 160)
+    backgroundColor: 'rgba(54,35,96,0.3)', // 透明度改為 30%
+    borderWidth: 3, 
+    borderColor: T.accent, 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    shadowColor: T.accent, 
+    shadowOffset: { width: 0, height: 0 }, 
+    shadowOpacity: 0.8, 
+    shadowRadius: 15, 
+    elevation: 10 
+  },
+  
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(54,35,96,0.75)', alignItems: 'center', justifyContent: 'center', zIndex: 200 },  loadingText: { color: T.textMain, fontFamily: 'VibePixel', fontSize: 15, marginTop: 12 },
   panel: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 100, backgroundColor: 'rgba(54,35,96,0.88)', borderTopLeftRadius: 32, borderTopRightRadius: 32, borderTopWidth: 2, borderColor: 'rgba(233,243,251,0.18)', paddingHorizontal: 20, paddingTop: 20, maxHeight: '65%' },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: T.accent },
   resultRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 11, borderBottomWidth: 1.5, borderBottomColor: 'rgba(233,243,251,0.08)' },
@@ -602,14 +636,11 @@ const styles = StyleSheet.create({
   resultDist: { color: T.accentSub, fontSize: 13, fontFamily: 'VibePixel' },
   hint: { color: T.textSub, fontSize: 13, fontFamily: 'VibePixel', textAlign: 'center', paddingVertical: 6 },
   panelLabel: { color: T.textSub, fontSize: 11, fontFamily: 'VibePixel', letterSpacing: 1.2, marginBottom: 10 },
-  
-  // 橫向排版樣式
   modeRow: { flexDirection: 'row', gap: 10, marginTop: 4, marginBottom: 16 },
   modeBtn: { flex: 1, alignItems: 'center', paddingVertical: 14, paddingHorizontal: 4, borderRadius: 14, gap: 6, backgroundColor: T.accentSub, borderWidth: 2.5, borderColor: T.border, shadowColor: T.border, shadowOffset: { width: 3, height: 3 }, shadowOpacity: 1, shadowRadius: 0 },
   modeBtnDisabled: { backgroundColor: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.15)', shadowOpacity: 0 },
   modeBtnTxt: { color: T.bg, fontSize: 13, fontFamily: 'VibePixel', fontWeight: 'bold' },
   modeBtnTime: { color: T.bg, fontSize: 15, fontFamily: 'VibePixel' },
-  
   previewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14, paddingBottom: 10, borderBottomWidth: 1, borderColor: 'rgba(255,255,255,0.1)', gap: 8 },
   previewTime: { color: T.textMain, fontSize: 18, fontFamily: 'VibePixel' },
   transitRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
