@@ -102,7 +102,7 @@ const ArScreen = ({ navigation }) => {
                         </TouchableOpacity>
                     ))}
                 </View>
-                <Text style={styles.hint}>搜尋地名或選擇上方類別 ✨</Text>
+                <Text style={styles.hint}>搜尋地名或選擇上方類別</Text>
             </View>
           ) : null
         )}
