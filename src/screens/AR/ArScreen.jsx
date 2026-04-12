@@ -46,12 +46,18 @@ const ArScreen = ({ navigation }) => {
         <TouchableOpacity style={styles.backBtn} onPress={() => {
           if (viewMode === 'NAV') resetAll();
           else if (viewMode === 'PREVIEW') setViewMode('DETAIL');
-          else if (viewMode === 'DETAIL') { setViewMode('SEARCH'); setSelectedIdx(null); setTargetCoords(null); }
+          else if (viewMode === 'DETAIL') { 
+            setViewMode('SEARCH'); 
+            setSelectedIdx(null); 
+            setTargetCoords(null); 
+          }
           else if (viewMode === 'SEARCH' && candidates.length > 0) { 
             setCandidates([]); 
             setSearchQuery(''); 
           }
-          else navigation.goBack();
+          else {
+            navigation.navigate('Home'); 
+          }
         }}>
           <Ionicons name="chevron-back" size={20} color={T.background} />
         </TouchableOpacity>

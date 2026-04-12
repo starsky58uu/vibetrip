@@ -292,7 +292,10 @@ export const useArLogic = () => {
   return {
     permission, userLocation, heading,
     viewMode, setViewMode, loading,
-    searchQuery, setSearchQuery, candidates, selectedIdx, targetCoords,
+    searchQuery, setSearchQuery, 
+    candidates, setCandidates,
+    selectedIdx, setSelectedIdx,
+    targetCoords, setTargetCoords,
     transportOptions, selectedModeIdx, routeSteps,
     currentStepIdx, setCurrentStepIdx, navInstruction, realTimeInfo, setRealTimeInfo,
     refreshingBike,
