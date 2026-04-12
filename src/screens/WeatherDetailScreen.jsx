@@ -21,7 +21,7 @@ const WeatherDetailScreen = ({ route, navigation }) => {
   useEffect(() => {
     (async () => {
       try {
-        const API_KEY = process.env.OPENWEATHER_API_KEY;
+        const API_KEY = process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY;
         // 抓取 5天/3小時 預報資料
         const url = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&units=metric&lang=zh_tw&appid=${API_KEY}`;
         const res = await axios.get(url);

@@ -11,8 +11,8 @@ import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 
 const { width } = Dimensions.get('window');
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY; 
-const OPENWEATHER_API_KEY = process.env.OPENWEATHER_API_KEY;
+const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_API_KEY; 
+const OPENWEATHER_API_KEY = process.env.EXPO_PUBLIC_OPENWEATHER_API_KEY;
 
 const themeColors = {
   background: '#362360',
