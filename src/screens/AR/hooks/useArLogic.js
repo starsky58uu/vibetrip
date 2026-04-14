@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 // 引入剛剛抽離的工具與服務
 import { CATEGORY_MAP } from '../constants/arData';
 import { fetchWithTimeout, getShortestAngle, getDistance, fmtSec, getBearing } from '../utils/helpers';
-import { getTdxToken, getBusETASec, getMrtETASec, getNearestYouBike } from '../services/transportApi';
+import { getTdxToken, getBusETASec, getMrtETASec, getNearestYouBike, getBusRealTimeStatus } from '../services/transportApi';
 
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_API_KEY?.trim();
 
@@ -36,6 +36,13 @@ export const useArLogic = () => {
   const [navInstruction, setNavInstruction]   = useState('計算路線中...');
   const [realTimeInfo, setRealTimeInfo]       = useState(null);
   const [refreshingBike, setRefreshingBike]   = useState(false);
+
+  // 【新增】乘車追蹤與提醒狀態
+  const [hasBoarded, setHasBoarded] = useState(false);
+  const [alightWarning, setAlightWarning] = useState(false);
+  const [hasShownAlightWarning, setHasShownAlightWarning] = useState(false); // 防止卡片重複彈出
+  const [boardedPlateNumb, setBoardedPlateNumb] = useState(null);
+  const [busCurrentStatus, setBusCurrentStatus] = useState(null);
 
   // Refs
   const stableLocationRef = useRef(null);
@@ -147,7 +154,8 @@ export const useArLogic = () => {
             realEtaSec = await getMrtETASec(token, stopName, walkToStationSec);
             transitInfo = `捷運 ${stopName}`;
           } else if (type === 'BUS') {
-            realEtaSec = await getBusETASec(token, lineName, stopName, walkToStationSec);
+            const busData = await getBusETASec(token, lineName, stopName, walkToStationSec);
+            realEtaSec = busData ? busData.estimateSec : null;
             transitInfo = `公車 ${lineName}`;
           }
 
@@ -213,72 +221,74 @@ export const useArLogic = () => {
     setSelectedModeIdx(idx);
     setViewMode('PREVIEW');
   };
-  // 1. 新增車牌號碼的 state
-  const [boardedPlateNumb, setBoardedPlateNumb] = useState(null);
-  const [busCurrentStatus, setBusCurrentStatus] = useState(null); // 儲存公車目前開到哪
-  
-  // 2. 修改原本的 fetchNavETA 函式，讓它支援抓車牌
-const fetchNavETA = async () => {
-  lastFetchRef.current = Date.now();
-  if (isFetchingEtaRef.current) return;
-  const upcoming = routeSteps.slice(currentStepIdx).find(s => s.travel_mode === 'TRANSIT');
-  if (!upcoming) return;
 
-  isFetchingEtaRef.current = true;
-  try {
-    const token = await getTdxToken(); 
-    if (!token) return;
-    const det = upcoming.transit_details;
-    const vt = det.line.vehicle.type;
-    const line = det.line.short_name || det.line.name;
-    const stop = det.departure_stop.name;
-    
-    if (vt === 'BUS') {
-      const busData = await getBusETASec(token, line, stop, 0);
-      if (busData) {
-        setRealTimeInfo({ 
-          type: 'bus', 
-          line, 
-          stop, 
-          etaSec: busData.estimateSec,
-          plateNumb: busData.plateNumb // 存下車牌
-        });
-      }
-    } else {
-      const etaSec = await getMrtETASec(token, stop, 0);
-      setRealTimeInfo({ type: 'mrt', line, stop, etaSec });
-    }
-  } finally { isFetchingEtaRef.current = false; }
-};
+  const fetchNavETA = async () => {
+    lastFetchRef.current = Date.now();
+    if (isFetchingEtaRef.current) return;
+    const upcoming = routeSteps.slice(currentStepIdx).find(s => s.travel_mode === 'TRANSIT');
+    if (!upcoming) return;
 
-// 3. 【新增】專門用來監控上車後公車位置的函式
-const trackBoardedBus = async () => {
-  if (!boardedPlateNumb || !hasBoarded) return;
-  const activeOpt = transportOptions[selectedModeIdx];
-  const upcoming = routeSteps[currentStepIdx];
-  if (activeOpt?.mode !== 'transit' || upcoming?.travel_mode !== 'TRANSIT') return;
-
-  try {
-    const token = await getTdxToken();
-    const line = upcoming.transit_details.line.short_name || upcoming.transit_details.line.name;
-    
-    const status = await getBusRealTimeStatus(token, line, boardedPlateNumb);
-    if (status) {
-      setBusCurrentStatus(`目前${status.status}：${status.currentStop}`);
+    isFetchingEtaRef.current = true;
+    try {
+      const token = await getTdxToken(); 
+      if (!token) return;
+      const det = upcoming.transit_details;
+      const vt = det.line.vehicle.type;
+      const line = det.line.short_name || det.line.name;
+      const stop = det.departure_stop.name;
       
-      // 假設終點站是 upcoming.transit_details.arrival_stop.name
-      // 如果 status.currentStop 等於你的下車點，就可以提早觸發下車提醒 (alightWarning)
-      if (status.currentStop === upcoming.transit_details.arrival_stop.name && status.status === '進站中') {
-         if (!alightWarning) {
-            setAlightWarning(true);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-         }
+      if (vt === 'BUS') {
+        const busData = await getBusETASec(token, line, stop, 0);
+        if (busData) {
+          setRealTimeInfo({ 
+            type: 'bus', 
+            line, 
+            stop, 
+            etaSec: busData.estimateSec,
+            plateNumb: busData.plateNumb // 存下車牌
+          });
+        }
+      } else {
+        const etaSec = await getMrtETASec(token, stop, 0);
+        setRealTimeInfo({ type: 'mrt', line, stop, etaSec });
       }
+    } finally { isFetchingEtaRef.current = false; }
+  };
+
+  const trackBoardedBus = async () => {
+    if (!boardedPlateNumb || !hasBoarded) return;
+
+    lastFetchRef.current = Date.now(); // 防呆：確保更新時間戳記，避免狂打 API
+    if (isFetchingEtaRef.current) return;
+    isFetchingEtaRef.current = true;
+
+    try {
+      const token = await getTdxToken();
+      const activeOpt = transportOptions[selectedModeIdx];
+      const upcoming = routeSteps[currentStepIdx];
+      if (activeOpt?.mode !== 'transit' || upcoming?.travel_mode !== 'TRANSIT') return;
+
+      const line = upcoming.transit_details.line.short_name || upcoming.transit_details.line.name;
+
+      const status = await getBusRealTimeStatus(token, line, boardedPlateNumb);
+      if (status) {
+        setBusCurrentStatus(`目前${status.status}：${status.currentStop}`);
+        
+        // 如果公車目前的站點等於你的目的地站點，且尚未發出過提醒
+        if (status.currentStop === upcoming.transit_details.arrival_stop.name && status.status === '進站中') {
+           if (!hasShownAlightWarning) {
+              setAlightWarning(true);
+              setHasShownAlightWarning(true);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+           }
+        }
+      }
+    } catch (err) {
+      console.log("追蹤公車失敗", err);
+    } finally {
+      isFetchingEtaRef.current = false; // 確保一定會釋放鎖定
     }
-  } catch (err) {
-    console.log("追蹤公車失敗", err);
-  }
-};
+  };
 
   const checkDestinationParking = async () => {
     if (!targetCoords || refreshingBike) return;
@@ -303,29 +313,55 @@ const trackBoardedBus = async () => {
     
     const d = getDistance(userLocation.latitude, userLocation.longitude, step.end_location.lat, step.end_location.lng);
     
-    if (d < 12 && currentStepIdx < routeSteps.length - 1) {
+    // 【抵達判斷】如果小於 30m 且是最後一步，顯示抵達
+    if (currentStepIdx === routeSteps.length - 1 && d <= 30) {
+      if (!navInstruction.includes('已抵達')) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setNavInstruction('已抵達目的地 🏁');
+      }
+      return;
+    }
+
+    // 【切換步驟】放寬至 40m，避免 GPS 誤差卡在搭車階段
+    if (d < 40 && currentStepIdx < routeSteps.length - 1) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setCurrentStepIdx(c => c + 1); 
       setRealTimeInfo(null); 
+      setHasBoarded(false);   
+      setAlightWarning(false); 
+      setHasShownAlightWarning(false); // 進入下一步重置提醒
       return;
     }
     
-    setNavInstruction(`${step.html_instructions.replace(/<[^>]*>?/gm, '')} · 剩餘 ${d < 1000 ? `${d}m` : `${(d/1000).toFixed(1)}km`}`);
-    
-    const activeOpt = transportOptions[selectedModeIdx];
-  if (activeOpt?.mode === 'transit' && (Date.now() - lastFetchRef.current > 15000)) {
-    // 如果還沒上車，看 ETA；如果已經上車，看車牌追蹤
-    if (!hasBoarded) {
-      fetchNavETA();
-    } else {
-      trackBoardedBus();
+    // 【下車提醒防呆】如果距離下車點小於 500m 且還沒跳過提醒，就跳一次
+    if (step.travel_mode === 'TRANSIT' && hasBoarded && !hasShownAlightWarning) {
+      if (d < 500) {
+        setAlightWarning(true);
+        setHasShownAlightWarning(true);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
     }
-  }
-  }, [userLocation, currentStepIdx, viewMode, hasBoarded, boardedPlateNumb]);
+
+    // 更新導航文字
+    if (d > 30 || currentStepIdx < routeSteps.length - 1) {
+      setNavInstruction(`${step.html_instructions.replace(/<[^>]*>?/gm, '')} · 剩餘 ${d < 1000 ? `${d}m` : `${(d/1000).toFixed(1)}km`}`);
+    }
+    
+    // API 定期更新邏輯：若尚未上車打 ETA，若已上車追蹤車牌
+    const activeOpt = transportOptions[selectedModeIdx];
+    if (activeOpt?.mode === 'transit' && (Date.now() - lastFetchRef.current > 15000)) {
+      if (!hasBoarded) {
+        fetchNavETA();
+      } else {
+        trackBoardedBus();
+      }
+    }
+  }, [userLocation, currentStepIdx, viewMode, hasBoarded, alightWarning, hasShownAlightWarning, boardedPlateNumb]);
 
   useEffect(() => { 
     const activeOpt = transportOptions[selectedModeIdx];
-    if (viewMode === 'NAV' && activeOpt?.mode === 'transit') fetchNavETA(); 
+    // 剛進 NAV 模式且還沒上車時，先打一次 ETA
+    if (viewMode === 'NAV' && activeOpt?.mode === 'transit' && !hasBoarded) fetchNavETA(); 
   }, [viewMode, currentStepIdx]);
 
   const arrowAngle = (() => {
@@ -340,6 +376,11 @@ const trackBoardedBus = async () => {
     setViewMode('SEARCH'); setCandidates([]); setSelectedIdx(null); setTargetCoords(null);
     setRouteSteps([]); setSelectedModeIdx(null); setTransportOptions([]);
     setRealTimeInfo(null); setCurrentStepIdx(0); setNavInstruction('計算路線中...');
+    setHasBoarded(false);
+    setAlightWarning(false);
+    setHasShownAlightWarning(false);
+    setBoardedPlateNumb(null);
+    setBusCurrentStatus(null);
   };
 
   return {
@@ -353,6 +394,10 @@ const trackBoardedBus = async () => {
     currentStepIdx, setCurrentStepIdx, navInstruction, realTimeInfo, setRealTimeInfo,
     refreshingBike,
     performSearch, onSelectCandidate, selectModeAndPreview, checkDestinationParking,
-    resetAll, arrowAngle
+    resetAll, arrowAngle,
+    hasBoarded, setHasBoarded,
+    alightWarning, setAlightWarning,
+    boardedPlateNumb, setBoardedPlateNumb,
+    busCurrentStatus
   };
 };
