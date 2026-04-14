@@ -6,6 +6,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Accelerometer } from 'expo-sensors';
 import * as Haptics from 'expo-haptics';
 import { mockPlans } from '../data/mockData';
+import * as Location from 'expo-location';
+import axios from 'axios';
 
 const { width } = Dimensions.get('window');
 
@@ -18,8 +20,19 @@ const themeColors = {
 };
 
 const ResultScreen = ({ route, navigation }) => {
+  const [currentTime, setCurrentTime] = useState('--:--');
+
+useEffect(() => {
+  const updateTime = () => {
+    const now = new Date();
+    setCurrentTime(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`);
+  };
+  updateTime();
+  const timer = setInterval(updateTime, 60000);
+  return () => clearInterval(timer);
+}, []);
   // 🌟 從路由取得資料，並解構出 vibeKey
-  const { plan, vibeKey, timestamp } = route.params || {};
+  const { plan, vibeKey, timestamp, headerData } = route.params || {};
   const [currentPlan, setCurrentPlan] = useState(plan || { title: '驚喜盲盒', items: [] });
   
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -88,7 +101,9 @@ const ResultScreen = ({ route, navigation }) => {
     <View style={styles.container}>
       <View style={styles.headerBadge}>
         <View style={styles.dot} />
-        <Text style={styles.headerText}>大安區 · 偵測搖晃中 · ☁️ 22℃</Text>
+        <Text style={styles.headerText}>
+          {headerData?.district || '大安區'} · {currentTime} · {headerData?.weather || '☁️ 22℃'}
+        </Text>
       </View>
 
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
@@ -117,6 +132,14 @@ const ResultScreen = ({ route, navigation }) => {
             <Ionicons name="phone-portrait-outline" size={24} color={themeColors.accentSub} />
             <Text style={styles.shakeText}>不滿意？搖一搖手機重新抽取！</Text>
           </View>
+          <TouchableOpacity 
+            style={styles.reshuffleButton} 
+            activeOpacity={0.8}
+            onPress={handleReshuffle} // 直接複用原本搖一搖的邏輯
+>
+            <Ionicons name="refresh" size={20} color={themeColors.textMain} />
+            <Text style={styles.reshuffleButtonText}>再抽一次驚喜盲盒</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity 
             style={styles.arButton} 
@@ -179,6 +202,24 @@ const styles = StyleSheet.create({
     paddingVertical: 18, borderRadius: 16, gap: 10,
     borderWidth: 2.5, borderColor: '#1E1238',
     shadowColor: themeColors.textMain, shadowOffset: { width: 5, height: 5 }, shadowOpacity: 1, shadowRadius: 0,
+  },
+  reshuffleButton: {
+    backgroundColor: 'rgba(201, 94, 158, 0.2)', // 桃紅色的透明感背景
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 16,
+    marginBottom: 15, // 與下方 AR 按鈕保持間距
+    borderWidth: 2,
+    borderColor: themeColors.accentMain,
+    borderStyle: 'dashed', // 虛線增加一種「盲盒」的活潑感
+  },
+  reshuffleButtonText: {
+    fontFamily: 'VibePixel',
+    fontSize: 16,
+    color: themeColors.textMain,
+    marginLeft: 8,
   },
   arButtonText: { fontFamily: 'VibePixel', fontSize: 17, color: '#362360' },
 });

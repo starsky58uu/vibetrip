@@ -25,11 +25,11 @@ const themeColors = {
 
 const CARD_WIDTH = width * 0.46;
 const SPACING = 12;
-const SPACER_WIDTH = (width - CARD_WIDTH) / 2;
+const SPACER_WIDTH = (width / 2) - (CARD_WIDTH / 2) - SPACING;
 
 const vibes = [
   { id: 'left-spacer' },
-  { id: 'cafe',   icon: 'cafe',        label: '想耍廢', bgColor: themeColors.textSub },
+  { id: 'cafe',   icon: 'cafe',        label: '喝咖啡', bgColor: themeColors.textSub },
   { id: 'photo',  icon: 'camera',      label: '拍美照', bgColor: themeColors.accentSub },
   { id: 'food',   icon: 'restaurant',  label: '肚子餓', bgColor: themeColors.textSub },
   { id: 'rain',   icon: 'umbrella',    label: '躲室內', bgColor: themeColors.accentSub },
@@ -118,6 +118,11 @@ const HomeScreen = () => {
       plan: options?.length ? options[Math.floor(Math.random() * options.length)] : mockPlans['cafe'][0],
       vibeKey: finalVibe,
       timestamp: Date.now(),
+      headerData: {
+      district: district,
+      weather: weather,
+      time: currentTime
+    }
     });
   };
 
@@ -163,7 +168,7 @@ const HomeScreen = () => {
             <View style={{ flex: 1 }} />
 
             <View style={styles.glassPanel}>
-              <Text style={styles.vibeTitle}>現在的直覺是？</Text>
+              <Text style={styles.vibeTitle}>現在的想要？</Text>
               
               <View style={{ height: 160 }}>
                 <Animated.FlatList
@@ -177,6 +182,9 @@ const HomeScreen = () => {
                   renderItem={({ item, index }) => {
                     if (item.id.includes('spacer')) return <View style={{ width: SPACER_WIDTH }} />;
                     const isSelected = selectedVibe === item.id;
+
+                    const contentColor = isSelected ? '#FFFFFF' : '#362360';
+
                     return (
                       <Animated.View style={[styles.cardWrapper, { width: CARD_WIDTH }]}>
                         <TouchableOpacity
@@ -187,8 +195,8 @@ const HomeScreen = () => {
                             setSelectedVibe(item.id);
                           }}
                         >
-                          <Ionicons name={item.icon} size={34} color={themeColors.background} />
-                          <Text style={styles.vibeLabel}>{item.label}</Text>
+                          <Ionicons name={item.icon} size={34} color={contentColor} />
+                          <Text style={[styles.vibeLabel, { color: contentColor }]}>{item.label}</Text>
                         </TouchableOpacity>
                       </Animated.View>
                     );
