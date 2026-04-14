@@ -213,26 +213,72 @@ export const useArLogic = () => {
     setSelectedModeIdx(idx);
     setViewMode('PREVIEW');
   };
+  // 1. 新增車牌號碼的 state
+  const [boardedPlateNumb, setBoardedPlateNumb] = useState(null);
+  const [busCurrentStatus, setBusCurrentStatus] = useState(null); // 儲存公車目前開到哪
+  
+  // 2. 修改原本的 fetchNavETA 函式，讓它支援抓車牌
+const fetchNavETA = async () => {
+  lastFetchRef.current = Date.now();
+  if (isFetchingEtaRef.current) return;
+  const upcoming = routeSteps.slice(currentStepIdx).find(s => s.travel_mode === 'TRANSIT');
+  if (!upcoming) return;
 
-  const fetchNavETA = async () => {
-    lastFetchRef.current = Date.now();
-    if (isFetchingEtaRef.current) return;
-    const upcoming = routeSteps.slice(currentStepIdx).find(s => s.travel_mode === 'TRANSIT');
-    if (!upcoming) return;
+  isFetchingEtaRef.current = true;
+  try {
+    const token = await getTdxToken(); 
+    if (!token) return;
+    const det = upcoming.transit_details;
+    const vt = det.line.vehicle.type;
+    const line = det.line.short_name || det.line.name;
+    const stop = det.departure_stop.name;
+    
+    if (vt === 'BUS') {
+      const busData = await getBusETASec(token, line, stop, 0);
+      if (busData) {
+        setRealTimeInfo({ 
+          type: 'bus', 
+          line, 
+          stop, 
+          etaSec: busData.estimateSec,
+          plateNumb: busData.plateNumb // 存下車牌
+        });
+      }
+    } else {
+      const etaSec = await getMrtETASec(token, stop, 0);
+      setRealTimeInfo({ type: 'mrt', line, stop, etaSec });
+    }
+  } finally { isFetchingEtaRef.current = false; }
+};
 
-    isFetchingEtaRef.current = true;
-    try {
-      const token = await getTdxToken(); 
-      if (!token) return;
-      const det = upcoming.transit_details;
-      const vt = det.line.vehicle.type;
-      const line = det.line.short_name || det.line.name;
-      const stop = det.departure_stop.name;
+// 3. 【新增】專門用來監控上車後公車位置的函式
+const trackBoardedBus = async () => {
+  if (!boardedPlateNumb || !hasBoarded) return;
+  const activeOpt = transportOptions[selectedModeIdx];
+  const upcoming = routeSteps[currentStepIdx];
+  if (activeOpt?.mode !== 'transit' || upcoming?.travel_mode !== 'TRANSIT') return;
+
+  try {
+    const token = await getTdxToken();
+    const line = upcoming.transit_details.line.short_name || upcoming.transit_details.line.name;
+    
+    const status = await getBusRealTimeStatus(token, line, boardedPlateNumb);
+    if (status) {
+      setBusCurrentStatus(`目前${status.status}：${status.currentStop}`);
       
-      let etaSec = (vt === 'BUS') ? await getBusETASec(token, line, stop, 0) : await getMrtETASec(token, stop, 0);
-      setRealTimeInfo({ type: (vt === 'BUS' ? 'bus' : 'mrt'), line, stop, etaSec });
-    } finally { isFetchingEtaRef.current = false; }
-  };
+      // 假設終點站是 upcoming.transit_details.arrival_stop.name
+      // 如果 status.currentStop 等於你的下車點，就可以提早觸發下車提醒 (alightWarning)
+      if (status.currentStop === upcoming.transit_details.arrival_stop.name && status.status === '進站中') {
+         if (!alightWarning) {
+            setAlightWarning(true);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+         }
+      }
+    }
+  } catch (err) {
+    console.log("追蹤公車失敗", err);
+  }
+};
 
   const checkDestinationParking = async () => {
     if (!targetCoords || refreshingBike) return;
@@ -267,8 +313,15 @@ export const useArLogic = () => {
     setNavInstruction(`${step.html_instructions.replace(/<[^>]*>?/gm, '')} · 剩餘 ${d < 1000 ? `${d}m` : `${(d/1000).toFixed(1)}km`}`);
     
     const activeOpt = transportOptions[selectedModeIdx];
-    if (activeOpt?.mode === 'transit' && (Date.now() - lastFetchRef.current > 20000)) fetchNavETA();
-  }, [userLocation, currentStepIdx, viewMode]);
+  if (activeOpt?.mode === 'transit' && (Date.now() - lastFetchRef.current > 15000)) {
+    // 如果還沒上車，看 ETA；如果已經上車，看車牌追蹤
+    if (!hasBoarded) {
+      fetchNavETA();
+    } else {
+      trackBoardedBus();
+    }
+  }
+  }, [userLocation, currentStepIdx, viewMode, hasBoarded, boardedPlateNumb]);
 
   useEffect(() => { 
     const activeOpt = transportOptions[selectedModeIdx];

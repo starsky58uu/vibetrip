@@ -23,6 +23,7 @@ export const getTdxToken = async () => {
   } catch (err) { return null; }
 };
 
+// 【修改】原有的 getBusETASec，讓它順便回傳車牌號碼
 export const getBusETASec = async (token, routeName, stopName, walkSec = 0) => {
   try {
     const altStop = stopName.includes('台') ? stopName.replace(/台/g, '臺') : stopName.replace(/臺/g, '台');
@@ -30,9 +31,37 @@ export const getBusETASec = async (token, routeName, stopName, walkSec = 0) => {
     const res = await fetchWithTimeout(`https://tdx.transportdata.tw/api/basic/v2/Bus/EstimatedTimeOfArrival/City/Taipei/${encodeURIComponent(routeName.trim())}?$filter=${filter}&$format=JSON`, { headers: { Authorization: `Bearer ${token}` } });
     const data = await res.json();
     if (!Array.isArray(data) || !data.length) return null;
+    
     const coming = data.filter(b => b.EstimateTime != null && b.StopStatus === 0).sort((a, b) => a.EstimateTime - b.EstimateTime);
     const catchable = coming.find(b => b.EstimateTime > (walkSec + 45)); 
-    return catchable ? catchable.EstimateTime : (coming[0]?.EstimateTime || null);
+    
+    const targetBus = catchable || coming[0];
+    if (!targetBus) return null;
+
+    return {
+      estimateSec: targetBus.EstimateTime,
+      plateNumb: targetBus.PlateNumb // 取得即將到站的車牌號碼
+    };
+  } catch (err) { return null; }
+};
+
+// 【新增】透過車牌號碼追蹤公車目前位置 (動態定點資料 A2)
+export const getBusRealTimeStatus = async (token, routeName, plateNumb) => {
+  if (!plateNumb) return null;
+  try {
+    const url = `https://tdx.transportdata.tw/api/basic/v2/Bus/RealTimeNearStop/City/Taipei/${encodeURIComponent(routeName.trim())}?$filter=PlateNumb eq '${plateNumb}'&$format=JSON`;
+    const res = await fetchWithTimeout(url, { headers: { Authorization: `Bearer ${token}` } });
+    const data = await res.json();
+    
+    if (!Array.isArray(data) || !data.length) return null;
+    
+    const bus = data[0];
+    // A2EventType: 0: 離站, 1: 進站
+    return {
+      currentStop: bus.StopName.Zh_tw,
+      status: bus.A2EventType === 1 ? '進站中' : '已離站',
+      stopSeq: bus.StopSequence // 透過站序可以計算還要幾站
+    };
   } catch (err) { return null; }
 };
 

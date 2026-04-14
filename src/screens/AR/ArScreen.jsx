@@ -22,7 +22,12 @@ const ArScreen = ({ navigation }) => {
     setCurrentStepIdx, navInstruction, realTimeInfo, setRealTimeInfo,
     refreshingBike,
     performSearch, onSelectCandidate, selectModeAndPreview, checkDestinationParking,
-    resetAll, arrowAngle
+    resetAll, arrowAngle,
+    // 【新增】解構出從 useArLogic 傳來的公車追蹤與上車狀態
+    hasBoarded, setHasBoarded,
+    alightWarning, setAlightWarning,
+    boardedPlateNumb, setBoardedPlateNumb,
+    busCurrentStatus
   } = useArLogic();
 
   if (!permission?.granted) {
@@ -71,6 +76,20 @@ const ArScreen = ({ navigation }) => {
           <View style={styles.topTitleWrap}><View style={styles.dot} /><Text style={styles.topTitle} numberOfLines={1}>{viewMode === 'NAV' ? '導航中' : viewMode === 'PREVIEW' ? '確認路線' : candidates[selectedIdx]?.name}</Text></View>
         )}
       </View>
+
+      {/* 【新增】即將到站彈出卡片 */}
+      {viewMode === 'NAV' && alightWarning && (
+        <View style={[styles.alightWarningCard, { top: insets.top + 65 }]}>
+          <Ionicons name="notifications-circle" size={36} color={T.background} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.alightWarningTitle}>即將到站</Text>
+            <Text style={styles.alightWarningDesc}>記得按下車鈴 / 準備下車！</Text>
+          </View>
+          <TouchableOpacity onPress={() => setAlightWarning(false)}>
+            <Ionicons name="close" size={24} color={T.background} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.arArea} pointerEvents="none">
         {targetCoords && (
@@ -161,8 +180,43 @@ const ArScreen = ({ navigation }) => {
         {viewMode === 'NAV' && (
           <View>
             <View style={styles.navBox}><Text style={styles.navInstr}>{navInstruction}</Text></View>
+
+            {/* 【新增】公共運輸上車按鈕與動態追蹤狀態 */}
+            {activeOpt?.mode === 'transit' && routeSteps[currentStepIdx]?.travel_mode === 'TRANSIT' && (
+              <View style={styles.transitBoardingBox}>
+                {!hasBoarded ? (
+                  <TouchableOpacity 
+                    style={styles.boardBtn} 
+                    onPress={() => {
+                      setHasBoarded(true);
+                      // 如果抓到的資料有公車車牌，就存起來準備追蹤
+                      if (realTimeInfo?.plateNumb) {
+                        setBoardedPlateNumb(realTimeInfo.plateNumb);
+                      }
+                    }}
+                  >
+                    <Ionicons name="enter-outline" size={20} color={T.background} />
+                    <Text style={styles.boardBtnTxt}>已上車</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.boardedInfo}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <Ionicons name="bus" size={20} color={T.accentMain} />
+                      <Text style={styles.boardedTxt}>
+                        乘車中 · 共需經過 {routeSteps[currentStepIdx]?.transit_details?.num_stops || 0} 站
+                      </Text>
+                    </View>
+                    {/* 顯示 TDX 抓到的公車目前到哪一站 */}
+                    {busCurrentStatus && (
+                      <Text style={styles.busStatusTxt}>{busCurrentStatus}</Text>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
             
-            {realTimeInfo && activeOpt?.mode === 'transit' && (
+            {/* 尚未上車前顯示公車 ETA */}
+            {realTimeInfo && activeOpt?.mode === 'transit' && !hasBoarded && (
               <View style={styles.rtCard}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                   <View style={styles.rtIconWrap}><Ionicons name={realTimeInfo.type==='bus'?'bus-outline':'subway-outline'} size={20} color={T.background} /></View>
@@ -247,6 +301,50 @@ const styles = StyleSheet.create({
   refreshBikeTxt: { color: T.textMain, fontSize: 14, fontFamily: 'VibePixel' },
   endBtn: { paddingVertical: 12, borderRadius: 14, alignItems: 'center', borderWidth: 2, borderColor: T.accentSub },
   endBtnTxt: { color: T.textSub, fontSize: 14, fontFamily: 'VibePixel' },
+
+  /* === 新增的樣式 === */
+  alightWarningCard: {
+    position: 'absolute',
+    left: 20, right: 20,
+    backgroundColor: T.accentMain,
+    borderRadius: 16,
+    padding: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 6,
+    zIndex: 200,
+  },
+  alightWarningTitle: { color: T.background, fontSize: 18, fontFamily: 'VibePixel', fontWeight: 'bold' },
+  alightWarningDesc: { color: T.background, fontSize: 13, fontFamily: 'VibePixel', marginTop: 4 },
+  transitBoardingBox: { marginBottom: 12 },
+  boardBtn: { 
+    backgroundColor: T.accentMain, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 8, 
+    paddingVertical: 14, 
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: T.border
+  },
+  boardBtnTxt: { color: T.background, fontSize: 16, fontFamily: 'VibePixel' },
+  boardedInfo: { 
+    paddingVertical: 14, 
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(233,243,251,0.1)', 
+    borderRadius: 14, 
+    borderWidth: 1.5, 
+    borderColor: T.accentMain,
+    justifyContent: 'center'
+  },
+  boardedTxt: { color: T.accentMain, fontSize: 15, fontFamily: 'VibePixel' },
+  busStatusTxt: { color: T.textSub, fontSize: 13, fontFamily: 'VibePixel', marginTop: 6, marginLeft: 28 },
 });
 
 export default ArScreen;
