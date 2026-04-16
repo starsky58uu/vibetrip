@@ -77,7 +77,7 @@ const MapScreen = () => {
         })}
       </MapView>
 
-      <View style={[styles.headerContainer, { paddingTop: insets.top + 10 }]}>
+      <View style={[styles.headerContainer, { paddingTop: 15 }]}>
         <View style={styles.segmentedControl}>
           <TouchableOpacity style={[styles.segmentBtn, mapMode === 'explore' && styles.segmentBtnActive]} onPress={() => setMapMode('explore')} activeOpacity={0.8}>
             <Ionicons name="earth" size={16} color={mapMode === 'explore' ? themeColors.textMain : themeColors.textSub} />
@@ -156,7 +156,7 @@ const styles = StyleSheet.create({
   segmentTextActive: { color: themeColors.textMain },
   fabContainer: { position: 'absolute', right: 15, top: '45%', alignItems: 'center', gap: 15, zIndex: 10 },
   fab: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(54, 35, 96, 0.9)', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: themeColors.border, shadowColor: '#000', shadowOffset: { width: 2, height: 2 }, shadowOpacity: 0.4, shadowRadius: 3 },
-  bottomBannerContainer: { position: 'absolute', bottom: 100, left: 15, right: 15, zIndex: 5 },
+  bottomBannerContainer: { position: 'absolute', left: 15, right: 15, zIndex: 5 },
   aiCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(54, 35, 96, 0.95)', borderWidth: 2, borderColor: themeColors.accentSub, borderRadius: 20, padding: 15, shadowColor: themeColors.accentSub, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8 },
   aiTitle: { fontFamily: 'VibePixel', fontSize: 14, color: themeColors.accentMain, marginBottom: 4 },
   aiText: { fontFamily: 'VibePixel', fontSize: 12, color: themeColors.textMain, lineHeight: 18 },
