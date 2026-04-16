@@ -33,7 +33,7 @@ const HomeScreen = () => {
 
   const handleMagicPress = () => {
     if (!selectedVibe) {
-      Alert.alert('先選一個 Vibe 啦！', '請滑動卡片選一個妳現在的心情喔 ✨');
+      Alert.alert('先選一個 Vibe 啦！', '請滑動卡片選一個妳現在的心情喔');
       return;
     }
 
@@ -74,7 +74,6 @@ const HomeScreen = () => {
 
           <View style={styles.overlay} pointerEvents="box-none">
             
-            {/* 🌟 質感貼心小語區塊 */}
             {isGreetingVisible && greetingMessage && (
               <Animated.View style={[styles.greetingContainer, { transform: [{ translateY: slideAnimY }] }]}>
                 <BubbleCard 
@@ -84,7 +83,6 @@ const HomeScreen = () => {
               </Animated.View>
             )}
 
-            {/* 🌟 頂部天氣列 */}
             <View style={styles.topRow} pointerEvents="box-none">
               <TouchableOpacity 
                 style={styles.headerBadge} activeOpacity={0.8}

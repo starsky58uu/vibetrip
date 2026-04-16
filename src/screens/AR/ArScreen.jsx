@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity,
-  TextInput, ActivityIndicator, ScrollView, Alert,
+  TextInput, ActivityIndicator, ScrollView, Alert, Linking
 } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,23 +11,31 @@ import { themeColors as T } from '../../constants/theme';
 import { CATEGORY_MAP } from './constants/arData';
 import { fmtSec } from './utils/helpers';
 import { useArLogic } from './hooks/useArLogic';
+import * as MediaLibrary from 'expo-media-library';
 
 const ArScreen = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  
+  // 相機與快捷拉環狀態
+  const cameraRef = useRef(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [camMode, setCamMode] = useState('picture');
+  const [stealthMsg, setStealthMsg] = useState(''); 
 
   const {
     permission, viewMode, setViewMode, loading,
     searchQuery, setSearchQuery, candidates, setCandidates, selectedIdx, setSelectedIdx, targetCoords, setTargetCoords,
     transportOptions, selectedModeIdx, routeSteps,
+    currentStepIdx,
     setCurrentStepIdx, navInstruction, realTimeInfo, setRealTimeInfo,
     refreshingBike,
     performSearch, onSelectCandidate, selectModeAndPreview, checkDestinationParking,
     resetAll, arrowAngle,
-    // 【新增】解構出從 useArLogic 傳來的公車追蹤與上車狀態
     hasBoarded, setHasBoarded,
     alightWarning, setAlightWarning,
     boardedPlateNumb, setBoardedPlateNumb,
-    busCurrentStatus
+    busCurrentStatus,
+    showQuickTools, setShowQuickTools
   } = useArLogic();
 
   if (!permission?.granted) {
@@ -43,26 +51,78 @@ const ArScreen = ({ navigation }) => {
   const bottomPad = Math.max(insets.bottom, 16);
   const activeOpt = selectedModeIdx != null ? transportOptions[selectedModeIdx] : null;
 
+  const showStealthToast = (msg) => {
+    setStealthMsg(msg);
+    setTimeout(() => setStealthMsg(''), 3000); // 3秒後自動消失
+  };
+
+  const handleSnap = async () => {
+    if (!cameraRef.current) return;
+    setCamMode('picture');
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ skipProcessing: true });
+      
+      await MediaLibrary.saveToLibraryAsync(photo.uri);
+      
+      showStealthToast('已存入相簿');
+    } catch (e) {
+      showStealthToast('拍照或存檔失敗');
+      console.log(e);
+    }
+  };
+
+  const toggleRecord = () => {
+    if (!cameraRef.current) return;
+    
+    if (isRecording) {
+      // 停止錄影會觸發下面 recordAsync 的 Promise 結束
+      cameraRef.current.stopRecording();
+      setIsRecording(false);
+      setCamMode('picture');
+    } else {
+      setCamMode('video');
+      setIsRecording(true);
+      
+      setTimeout(async () => {
+        try { 
+          const video = await cameraRef.current.recordAsync({ mute: true }); 
+          
+          if (video && video.uri) {
+            await MediaLibrary.saveToLibraryAsync(video.uri);
+            showStealthToast('影片已存入相簿');
+          }
+        } catch (e) { 
+          setIsRecording(false); 
+          showStealthToast('錄影失敗');
+          console.log(e);
+        }
+      }, 500);
+    }
+  };
+  const handleCall110 = () => {
+    // 報案保留 Alert 是為了防止使用者手滑不小心按到 110 造成謊報觸法
+    Alert.alert('🚨 緊急報案', '確定要啟動 110 報案撥號嗎？', [
+      { text: '取消', style: 'cancel' },
+      { text: '確定撥打', style: 'destructive', onPress: () => Linking.openURL('tel:110') }
+    ]);
+  };
+
   return (
     <View style={styles.root}>
-      <CameraView style={StyleSheet.absoluteFillObject} facing="back" />
+      <CameraView ref={cameraRef} mode={camMode} style={StyleSheet.absoluteFillObject} facing="back" />
       
+      {/* 頂部導航列 */}
       <View style={[styles.topBar, { paddingTop: insets.top + 6 }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => {
           if (viewMode === 'NAV') resetAll();
           else if (viewMode === 'PREVIEW') setViewMode('DETAIL');
           else if (viewMode === 'DETAIL') { 
-            setViewMode('SEARCH'); 
-            setSelectedIdx(null); 
-            setTargetCoords(null); 
+            setViewMode('SEARCH'); setSelectedIdx(null); setTargetCoords(null); 
           }
           else if (viewMode === 'SEARCH' && candidates.length > 0) { 
-            setCandidates([]); 
-            setSearchQuery(''); 
+            setCandidates([]); setSearchQuery(''); 
           }
-          else {
-            navigation.navigate('Home'); 
-          }
+          else navigation.navigate('Home'); 
         }}>
           <Ionicons name="chevron-back" size={20} color={T.background} />
         </TouchableOpacity>
@@ -77,7 +137,66 @@ const ArScreen = ({ navigation }) => {
         )}
       </View>
 
-      {/* 【新增】即將到站彈出卡片 */}
+      {/* 【無聲提示字卡】 */}
+      {stealthMsg !== '' && (
+        <View style={[styles.stealthToast, { top: insets.top + 70 }]}>
+          <Text style={styles.stealthToastTxt}>{stealthMsg}</Text>
+        </View>
+      )}
+
+      {/* 錄影中狀態列 */}
+      {isRecording && (
+        <View style={[styles.recordingIndicator, { top: insets.top + 70 }]}>
+            <View style={styles.recordingDot} />
+            <Text style={styles.recordingTxt}>錄影中 (無聲模式)</Text>
+        </View>
+      )}
+
+      {/* 30% 透明度小拉環 */}
+      {!showQuickTools && !isRecording && (
+        <TouchableOpacity 
+          style={[styles.quickTab, { top: '45%' }]} 
+          onPress={() => setShowQuickTools(true)}
+          activeOpacity={0.6}
+        >
+          <Ionicons name="shield-outline" size={20} color="#FFF" />
+          <View style={styles.tabLine} />
+        </TouchableOpacity>
+      )}
+
+      {/* 【全新質感升級】快捷工具膠囊 */}
+      {showQuickTools && (
+        <View style={styles.quickMenu}>
+          
+          <TouchableOpacity style={styles.menuActionBtn} onPress={handleCall110}>
+            <View style={[styles.iconCircle, { backgroundColor: 'rgba(255,59,48,0.15)', borderColor: '#FF3B30' }]}>
+              <Ionicons name="call" size={22} color="#FF3B30" />
+            </View>
+            <Text style={styles.menuActionTxt}>110</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuActionBtn} onPress={toggleRecord}>
+            <View style={[styles.iconCircle, { backgroundColor: isRecording ? 'rgba(255,59,48,0.8)' : 'rgba(255,149,0,0.15)', borderColor: isRecording ? '#FF3B30' : '#FF9500' }]}>
+              <Ionicons name={isRecording ? "stop" : "videocam"} size={22} color={isRecording ? "#FFF" : "#FF9500"} />
+            </View>
+            <Text style={styles.menuActionTxt}>{isRecording ? '停止' : '錄影'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuActionBtn} onPress={handleSnap}>
+            <View style={[styles.iconCircle, { backgroundColor: 'rgba(52,199,89,0.15)', borderColor: '#34C759' }]}>
+              <Ionicons name="camera" size={22} color="#34C759" />
+            </View>
+            <Text style={styles.menuActionTxt}>拍照</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.closeBtn} onPress={() => setShowQuickTools(false)}>
+            <Ionicons name="close" size={24} color="#A1A1AA" />
+          </TouchableOpacity>
+
+        </View>
+      )}
+
+      {/* 即將到站彈出卡片 */}
       {viewMode === 'NAV' && alightWarning && (
         <View style={[styles.alightWarningCard, { top: insets.top + 65 }]}>
           <Ionicons name="notifications-circle" size={36} color={T.background} />
@@ -91,21 +210,18 @@ const ArScreen = ({ navigation }) => {
         </View>
       )}
 
+      {/* AR 箭頭 */}
       <View style={styles.arArea} pointerEvents="none">
         {targetCoords && (
           <View style={[styles.arrowWrap, { transform: [{ rotate: `${arrowAngle}deg` }] }]}>
             <View style={styles.arrowCore}>
-              <Ionicons 
-                name="navigate" 
-                size={110} 
-                color={T.textMain} 
-                style={{ transform: [{ rotate: '-45deg' }] }} 
-              />
+              <Ionicons name="navigate" size={110} color={T.textMain} style={{ transform: [{ rotate: '-45deg' }] }} />
             </View>
           </View>
         )}
       </View>
 
+      {/* 底部導航面板 (維持原樣) */}
       <View style={[styles.panel, { paddingBottom: bottomPad + 4 }]}>
         {viewMode === 'SEARCH' && (
           candidates.length > 0 ? (
@@ -181,20 +297,10 @@ const ArScreen = ({ navigation }) => {
           <View>
             <View style={styles.navBox}><Text style={styles.navInstr}>{navInstruction}</Text></View>
 
-            {/* 【新增】公共運輸上車按鈕與動態追蹤狀態 */}
             {activeOpt?.mode === 'transit' && routeSteps[currentStepIdx]?.travel_mode === 'TRANSIT' && (
               <View style={styles.transitBoardingBox}>
                 {!hasBoarded ? (
-                  <TouchableOpacity 
-                    style={styles.boardBtn} 
-                    onPress={() => {
-                      setHasBoarded(true);
-                      // 如果抓到的資料有公車車牌，就存起來準備追蹤
-                      if (realTimeInfo?.plateNumb) {
-                        setBoardedPlateNumb(realTimeInfo.plateNumb);
-                      }
-                    }}
-                  >
+                  <TouchableOpacity style={styles.boardBtn} onPress={() => { setHasBoarded(true); if (realTimeInfo?.plateNumb) setBoardedPlateNumb(realTimeInfo.plateNumb); }}>
                     <Ionicons name="enter-outline" size={20} color={T.background} />
                     <Text style={styles.boardBtnTxt}>已上車</Text>
                   </TouchableOpacity>
@@ -202,20 +308,14 @@ const ArScreen = ({ navigation }) => {
                   <View style={styles.boardedInfo}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <Ionicons name="bus" size={20} color={T.accentMain} />
-                      <Text style={styles.boardedTxt}>
-                        乘車中 · 共需經過 {routeSteps[currentStepIdx]?.transit_details?.num_stops || 0} 站
-                      </Text>
+                      <Text style={styles.boardedTxt}>乘車中 · 共需經過 {routeSteps[currentStepIdx]?.transit_details?.num_stops || 0} 站</Text>
                     </View>
-                    {/* 顯示 TDX 抓到的公車目前到哪一站 */}
-                    {busCurrentStatus && (
-                      <Text style={styles.busStatusTxt}>{busCurrentStatus}</Text>
-                    )}
+                    {busCurrentStatus && <Text style={styles.busStatusTxt}>{busCurrentStatus}</Text>}
                   </View>
                 )}
               </View>
             )}
             
-            {/* 尚未上車前顯示公車 ETA */}
             {realTimeInfo && activeOpt?.mode === 'transit' && !hasBoarded && (
               <View style={styles.rtCard}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -258,13 +358,7 @@ const styles = StyleSheet.create({
   catText: { color: T.background, fontSize: 13, fontFamily: 'VibePixel' },
   arArea: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 200 },
   arrowWrap: { width: 280, height: 280, alignItems: 'center', justifyContent: 'center' },
-  arrowCore: { 
-    width: 250, height: 250, borderRadius: 125, 
-    backgroundColor: 'rgba(54,35,96,0.3)', 
-    borderWidth: 3, borderColor: T.accentMain, 
-    alignItems: 'center', justifyContent: 'center', 
-    shadowColor: T.accentMain, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 15, elevation: 10 
-  },
+  arrowCore: { width: 250, height: 250, borderRadius: 125, backgroundColor: 'rgba(54,35,96,0.3)', borderWidth: 3, borderColor: T.accentMain, alignItems: 'center', justifyContent: 'center', shadowColor: T.accentMain, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 15, elevation: 10 },
   loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(54,35,96,0.75)', alignItems: 'center', justifyContent: 'center', zIndex: 200 },  
   loadingText: { color: T.textMain, fontFamily: 'VibePixel', fontSize: 15, marginTop: 12 },
   panel: { position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 100, backgroundColor: 'rgba(54,35,96,0.88)', borderTopLeftRadius: 32, borderTopRightRadius: 32, borderTopWidth: 2, borderColor: 'rgba(233,243,251,0.18)', paddingHorizontal: 20, paddingTop: 20, maxHeight: '65%' },
@@ -302,47 +396,57 @@ const styles = StyleSheet.create({
   endBtn: { paddingVertical: 12, borderRadius: 14, alignItems: 'center', borderWidth: 2, borderColor: T.accentSub },
   endBtnTxt: { color: T.textSub, fontSize: 14, fontFamily: 'VibePixel' },
 
-  /* === 新增的樣式 === */
-  alightWarningCard: {
-    position: 'absolute',
-    left: 20, right: 20,
-    backgroundColor: T.accentMain,
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 6,
-    zIndex: 200,
+  stealthToast: {
+    position: 'absolute', alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 20, paddingVertical: 10,
+    borderRadius: 20, zIndex: 300,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
   },
+  stealthToastTxt: { color: '#FFF', fontSize: 14, fontFamily: 'VibePixel', textAlign: 'center' },
+  recordingIndicator: {
+    position: 'absolute', alignSelf: 'center',
+    backgroundColor: 'rgba(255, 59, 48, 0.9)',
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+    flexDirection: 'row', alignItems: 'center', gap: 8, zIndex: 200,
+    borderWidth: 2, borderColor: '#FFF'
+  },
+  recordingDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFF' },
+  recordingTxt: { color: '#FFF', fontSize: 14, fontFamily: 'VibePixel', fontWeight: 'bold' },
+
+  quickTab: {
+    position: 'absolute', right: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)', 
+    borderTopLeftRadius: 15, borderBottomLeftRadius: 15,
+    paddingVertical: 16, paddingHorizontal: 10,
+    alignItems: 'center', gap: 6, zIndex: 200,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)'
+  },
+  tabLine: { width: 2, height: 22, backgroundColor: 'rgba(255,255,255,0.6)', borderRadius: 1 },
+  quickMenu: {
+    position: 'absolute', right: 15, top: '25%',
+    backgroundColor: 'rgba(25, 25, 25, 0.85)', // 霧面深色擬玻璃
+    borderRadius: 35, paddingVertical: 24, paddingHorizontal: 14,
+    gap: 22, alignItems: 'center', zIndex: 201,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 10, elevation: 10
+  },
+  menuActionBtn: { alignItems: 'center', justifyContent: 'center' },
+  iconCircle: {
+    width: 54, height: 54, borderRadius: 27,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1.5,
+  },
+  menuActionTxt: { color: '#FFF', fontSize: 12, fontFamily: 'VibePixel', marginTop: 8, textAlign: 'center' },
+  closeBtn: { marginTop: 4 },
+
+  alightWarningCard: { position: 'absolute', left: 20, right: 20, backgroundColor: T.accentMain, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 6, zIndex: 200 },
   alightWarningTitle: { color: T.background, fontSize: 18, fontFamily: 'VibePixel', fontWeight: 'bold' },
   alightWarningDesc: { color: T.background, fontSize: 13, fontFamily: 'VibePixel', marginTop: 4 },
   transitBoardingBox: { marginBottom: 12 },
-  boardBtn: { 
-    backgroundColor: T.accentMain, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    gap: 8, 
-    paddingVertical: 14, 
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: T.border
-  },
+  boardBtn: { backgroundColor: T.accentMain, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 14, borderWidth: 2, borderColor: T.border },
   boardBtnTxt: { color: T.background, fontSize: 16, fontFamily: 'VibePixel' },
-  boardedInfo: { 
-    paddingVertical: 14, 
-    paddingHorizontal: 16,
-    backgroundColor: 'rgba(233,243,251,0.1)', 
-    borderRadius: 14, 
-    borderWidth: 1.5, 
-    borderColor: T.accentMain,
-    justifyContent: 'center'
-  },
+  boardedInfo: { paddingVertical: 14, paddingHorizontal: 16, backgroundColor: 'rgba(233,243,251,0.1)', borderRadius: 14, borderWidth: 1.5, borderColor: T.accentMain, justifyContent: 'center' },
   boardedTxt: { color: T.accentMain, fontSize: 15, fontFamily: 'VibePixel' },
   busStatusTxt: { color: T.textSub, fontSize: 13, fontFamily: 'VibePixel', marginTop: 6, marginLeft: 28 },
 });
