@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Animated, ActivityIndicator, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Animated, ActivityIndicator, Modal, Dimensions } from 'react-native';
 import MapView from 'react-native-maps'; 
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -8,8 +8,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { themeColors as T } from '../../constants/theme';
 import { mockPlans } from '../../data/mockData';
 import { useHomeData } from './hooks/useHomeData';
-import { vibes, originalPurpleMapStyle, CARD_WIDTH, SPACING, SPACER_WIDTH, getWeatherIcon } from './constants/homeData';
+import { vibes, originalPurpleMapStyle, CARD_WIDTH, SPACING, getWeatherIcon } from './constants/homeData';
 import BubbleCard from './components/BubbleCard';
+
+const { width: windowWidth } = Dimensions.get('window');
+const availableWidth = windowWidth - 24 - 4;
+const SNAP_INTERVAL = CARD_WIDTH + (SPACING * 2);
+const SIDE_PADDING = (availableWidth - SNAP_INTERVAL) / 2;
 
 const HomeScreen = () => {
   const navigation = useNavigation();
@@ -25,6 +30,8 @@ const HomeScreen = () => {
   const [selectedVibe, setSelectedVibe] = useState(null);
   const [isMapReady, setIsMapReady] = useState(false);
   const [isGreetingVisible, setIsGreetingVisible] = useState(true);
+
+  const cleanVibes = vibes.filter(item => !item.id.includes('spacer'));
 
   // 觸發進場動畫
   useEffect(() => {
@@ -114,12 +121,22 @@ const HomeScreen = () => {
               
               <View style={{ height: 160 }}>
                 <Animated.FlatList
-                  data={vibes} horizontal showsHorizontalScrollIndicator={false}
-                  snapToInterval={CARD_WIDTH + SPACING * 2} decelerationRate="fast"
+                  data={cleanVibes} 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  
+                  snapToInterval={SNAP_INTERVAL} 
+                  snapToAlignment="start"
+                  decelerationRate="fast"
+                  
                   onScroll={Animated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
-                  contentContainerStyle={styles.flatListContent}
+                  
+                  contentContainerStyle={[
+                    styles.flatListContent,
+                    { paddingHorizontal: SIDE_PADDING }
+                  ]}
+                  
                   renderItem={({ item }) => {
-                    if (item.id.includes('spacer')) return <View style={{ width: SPACER_WIDTH }} />;
                     const isSelected = selectedVibe === item.id;
                     return (
                       <Animated.View style={[styles.cardWrapper, { width: CARD_WIDTH }]}>
