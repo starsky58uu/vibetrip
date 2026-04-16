@@ -1,8 +1,9 @@
 import React from 'react';
 import { 
   View, Text, StyleSheet, ActivityIndicator, 
-  SafeAreaView, TouchableOpacity, ScrollView, FlatList
+  TouchableOpacity, ScrollView, FlatList 
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { themeColors as T } from '../../constants/theme';
