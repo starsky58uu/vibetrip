@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, Animated, ActivityIndi
 import MapView from 'react-native-maps'; 
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; 
 
 import { themeColors as T } from '../../constants/theme';
 import { mockPlans } from '../../data/mockData';
@@ -15,6 +16,9 @@ const HomeScreen = () => {
   const mapRef = useRef(null);
   const scrollX = useRef(new Animated.Value(0)).current;
   const slideAnimY = useRef(new Animated.Value(-100)).current;
+
+  const insets = useSafeAreaInsets();
+  const bottomPadding = 110 + insets.bottom;
 
   const { location, district, temperature, weatherCondition, greetingMessage, currentTime, isLoading } = useHomeData();
   
@@ -72,7 +76,7 @@ const HomeScreen = () => {
             onMapReady={() => setIsMapReady(true)}
           />
 
-          <View style={styles.overlay} pointerEvents="box-none">
+          <View style={[styles.overlay, { paddingBottom: bottomPadding }]} pointerEvents="box-none">
             
             {/* 🌟 質感貼心小語區塊 */}
             {isGreetingVisible && greetingMessage && (
@@ -151,7 +155,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: T.background },
   loadingContainer: { flex: 1, backgroundColor: T.background, justifyContent: 'center', alignItems: 'center' },
   loadingText: { color: T.textMain, fontSize: 18, marginVertical: 20, fontFamily: 'VibePixel' },
-  overlay: { ...StyleSheet.absoluteFillObject, paddingTop: 60, paddingBottom: 110 },
+  overlay: { ...StyleSheet.absoluteFillObject, paddingTop: 60 },
   
   greetingContainer: { position: 'absolute', top: 120, left: 20, right: 20, zIndex: 100, alignItems: 'center' },
   
