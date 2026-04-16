@@ -77,7 +77,7 @@ const HomeScreen = () => {
           />
 
           <View style={[styles.overlay, { paddingBottom: bottomPadding }]} pointerEvents="box-none">
-            
+
             {/* 🌟 質感貼心小語區塊 */}
             {isGreetingVisible && greetingMessage && (
               <Animated.View style={[styles.greetingContainer, { transform: [{ translateY: slideAnimY }] }]}>
@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: T.background },
   loadingContainer: { flex: 1, backgroundColor: T.background, justifyContent: 'center', alignItems: 'center' },
   loadingText: { color: T.textMain, fontSize: 18, marginVertical: 20, fontFamily: 'VibePixel' },
-  overlay: { ...StyleSheet.absoluteFillObject, paddingTop: 60 },
+  overlay: { ...StyleSheet.absoluteFillObject, paddingTop: 10 },
   
   greetingContainer: { position: 'absolute', top: 120, left: 20, right: 20, zIndex: 100, alignItems: 'center' },
   
