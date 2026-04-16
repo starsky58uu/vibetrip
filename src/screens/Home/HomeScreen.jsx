@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Animated, ActivityIndicator, Modal, Dimensions } from 'react-native';
-import MapView from 'react-native-maps'; 
+import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context'; 
@@ -74,6 +74,7 @@ const HomeScreen = () => {
       {!isLoading && location && (
         <>
           <MapView
+            provider={PROVIDER_GOOGLE}
             ref={mapRef}
             style={StyleSheet.absoluteFillObject}
             mapPadding={{ top: 0, right: 0, bottom: 300, left: 0 }}
