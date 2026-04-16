@@ -1,6 +1,7 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; 
 
 import { themeColors } from '../constants/theme';
 
@@ -12,15 +13,28 @@ import MapScreen from '../screens/Map/MapScreen';
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
+  const insets = useSafeAreaInsets(); 
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         tabBarStyle: { 
-          position: 'absolute', bottom: 20, left: 15, right: 15,
-          backgroundColor: 'rgba(54, 35, 96, 0.95)', height: 70, 
-          paddingBottom: 10, paddingTop: 5, borderRadius: 20,
-          borderWidth: 2, borderColor: themeColors.textSub,
-          elevation: 5, shadowColor: '#000', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 0.8, shadowRadius: 0, 
+          position: 'absolute', 
+          bottom: 20 + insets.bottom, 
+          left: 15, 
+          right: 15,
+          backgroundColor: 'rgba(54, 35, 96, 0.95)', 
+          height: 70, 
+          paddingBottom: 10, 
+          paddingTop: 5, 
+          borderRadius: 20,
+          borderWidth: 2, 
+          borderColor: themeColors.textSub,
+          elevation: 5, 
+          shadowColor: '#000', 
+          shadowOffset: { width: 4, height: 4 }, 
+          shadowOpacity: 0.8, 
+          shadowRadius: 0, 
         },
         tabBarActiveTintColor: themeColors.accentMain,
         tabBarInactiveTintColor: themeColors.textSub,
