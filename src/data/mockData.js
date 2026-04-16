@@ -3,140 +3,190 @@
 export const mockPlans = {
   cafe: [
     { 
-      title: '廢物文青之旅', 
+      title: '拜金', 
       items: [
-        { time: '14:00', activity: '隱藏版老屋咖啡', desc: '先來杯冠軍咖啡喚醒靈魂 [cite: 11]', icon: 'cafe', color: '#84A6D3' },
-        { time: '15:30', activity: '獨立書店', desc: '翻兩頁就放回去，享受氣氛 [cite: 28]', icon: 'book', color: '#C3AED9' }
+        { time: '13:30', activity: '星巴克', desc: '嘿嘿可以發限動了', icon: 'cafe', color: '#84A6D3' },
+        { time: '15:30', activity: '國北', desc: '我愛慕虛榮啦！', icon: 'school', color: '#C3AED9' }
       ]
     },
     { 
-      title: '咖啡因中毒', 
+      title: '還在混啊', 
       items: [
-        { time: '14:20', activity: '手沖精品店', desc: '專注於 3 小時的味覺饗宴 [cite: 7, 31]', icon: 'cafe', color: '#C95E9E' },
-        { time: '16:00', activity: '河邊散步', desc: '消化咖啡因並尋找 AR 膠囊 [cite: 18, 31]', icon: 'walk', color: '#84A6D3' }
+        { time: '19:30', activity: '7-11', desc: '買杯咖啡當心悸寶貝', icon: 'cafe', color: '#C95E9E' },
+        { time: '19:40', activity: '創意館', desc: '連夜加班寫code', icon: 'walk', color: '#84A6D3' }
       ]
     },
     { 
-      title: '黑膠空間逃避行', 
+      title: '小聲點吵到我讀書了', 
       items: [
-        { time: '15:00', activity: '黑膠唱片行', desc: '戴上耳機，這 3 小時誰也別吵我 [cite: 7, 10]', icon: 'headset', color: '#C3AED9' },
-        { time: '16:40', activity: '河畔看日落', desc: '最後的餘暉留給自己 [cite: 5, 28]', icon: 'sunny', color: '#84A6D3' }
+        { time: '15:30', activity: '路易莎', desc: '喝咖啡聊是非', icon: 'cafe', color: '#C3AED9' }
       ]
     }
   ],
   food: [
     { 
-      title: '肚子餓了的極致享受', 
+      title: '早餐吃到飽', 
       items: [
-        { time: '12:00', activity: '隱藏版拉麵', desc: '巷弄裡的職人味道 [cite: 11]', icon: 'restaurant', color: '#C95E9E' },
-        { time: '13:30', activity: '手工甜點', desc: '甜點是另一個胃的事 [cite: 31]', icon: 'ice-cream', color: '#84A6D3' }
+        { time: '9:30', activity: '好食早餐', desc: '好那今天呢風光明媚風和日麗', icon: 'restaurant', color: '#C95E9E' },
+        { time: '11:30', activity: '和平時光', desc: '連吃兩個早餐店，太無情了', icon: 'restaurant', color: '#84A6D3' }
       ]
     },
     { 
-      title: '辛辣與救贖', 
+      title: '我是義大利麵', 
       items: [
-        { time: '18:00', activity: '四川紅油抄手', desc: '燃燒靈魂的麻辣感 [cite: 10, 11]', icon: 'flame', color: '#C95E9E' },
-        { time: '19:10', activity: '黑糖珍珠奶茶', desc: '這杯就是妳的救贖 [cite: 2, 31]', icon: 'beaker', color: '#C3AED9' }
+        { time: '17:30', activity: "I'm pasta", desc: '我是義大利麵', icon: 'restaurant', color: '#C95E9E' },
+        { time: '19:00', activity: '回家的一路上', desc: '回家吧孩子 回家吧', icon: 'home', color: '#C3AED9' }
       ]
     },
     { 
-      title: '隱藏菜單大冒險', 
+      title: '藍藍路', 
       items: [
-        { time: '13:00', activity: '巷弄私廚', desc: '沒有招牌，只有懂的人才在 [cite: 5, 11]', icon: 'restaurant', color: '#84A6D3' },
-        { time: '15:00', activity: '街角雕魚燒', desc: '咬一口暖呼呼的幸福 [cite: 2, 31]', icon: 'fast-food', color: '#C3AED9' }
+        { time: '12:00', activity: '麥當勞', desc: '誰會在中午十二點吃麥當勞啊', icon: 'fast-food', color: '#84A6D3' },
+        { time: '12:30', activity: '創意館', desc: '沒辦法內用好像只能去創館或學餐了(´・ω・`)', icon: 'school', color: '#C3AED9' }
       ]
-    }
+    },
+    { 
+      title: '增雞增脂', 
+      items: [
+        { time: '17:30', activity: '好吃雞排', desc: '吃飽才有力氣減肥', icon: 'restaurant', color: '#C95E9E' },
+        { time: '17:50', activity: 'combuy ', desc: '辛苦的一天犒賞自己一杯', icon: 'wine', color: '#84A6D3' }
+      ]
+    },
+    { 
+      title: '餃浸醬汁', 
+      items: [
+        { time: '12:00', activity: '李記水餃', desc: '哪裡可以領水餃，當舖，因為當舖領(dumplings )', icon: 'restaurant', color: '#84A6D3' }
+      ]
+    },
+    { 
+      title: '乞丐超人', 
+      items: [
+        { time: '20:00', activity: '超商', desc: '要是我的女人吃不到i珍食，你們都要給我陪葬', icon: 'restaurant', color: '#C95E9E' }
+      ]
+    },
+    { 
+      title: '湯姆克滷汁', 
+      items: [
+        { time: '19:00', activity: "胖胖滷味", desc: '到底叫胖胖還是財哥', icon: 'restaurant', color: '#C95E9E' },
+        { time: '20:30', activity: '回家家', desc: '太晚了快回家', icon: 'home', color: '#C3AED9' }
+      ]
+    },
+    { 
+      title: '米飯玄師', 
+      items: [
+        { time: '11:50', activity: '小圓村', desc: '大杯飲料太多了根本喝不完', icon: 'restaurant', color: '#84A6D3' },
+        { time: '12:40', activity: '國北', desc: '吃太飽散個步完去上課', icon: 'school', color: '#C3AED9' }
+      ]
+    },
+    { 
+      title: '島揮！', 
+      items: [
+        { time: '15:30', activity: "搗飛", desc: '挖欸能力丟洗島揮啊', icon: 'ice-cream', color: '#C95E9E' },
+        { time: '16:30', activity: '台大校園', desc: '考不到至少可以在裡面散步', icon: 'school', color: '#C3AED9' }
+      ]
+    },
   ],
   photo: [
     { 
-      title: '美照收藏家', 
+      title: '大安森靈感', 
       items: [
-        { time: '15:00', activity: '古著店巡禮', desc: '穿上復古風格拍一張 [cite: 11, 14]', icon: 'camera', color: '#C3AED9' },
-        { time: '16:30', activity: '夕陽觀景台', desc: '捕捉當下的絕美光影 [cite: 10, 13]', icon: 'sunny', color: '#C95E9E' }
+        { time: '14:00', activity: '大安森林公園', desc: '賞花賞鳥賞老人', icon: 'leaf', color: '#C3AED9' },
+        { time: '16:30', activity: '蓁橙咖啡手作坊', desc: '手機先吃(*´∀`)~', icon: 'cafe', color: '#C95E9E' }
       ]
     },
     { 
-      title: '城市霓虹計畫', 
+      title: 'C門町', 
       items: [
-        { time: '19:00', activity: '信義區天橋', desc: '在賽博龐克的夜色下長曝 [cite: 28, 31]', icon: 'camera', color: '#C3AED9' },
-        { time: '20:30', activity: '地下酒吧', desc: '酒標與微光是最美濾鏡 [cite: 7, 31]', icon: 'wine', color: '#C95E9E' }
+        { time: '11:30', activity: '捷運科技大樓站', desc: '前往西門', icon: 'bus', color: '#C3AED9' },
+        { time: '12:00', activity: '西門町', desc: '就...逛西門町', icon: 'storefront', color: '#C95E9E' }
       ]
     },
     { 
-      title: '文青極簡構圖', 
+      title: '不要遲到了', 
       items: [
-        { time: '14:00', activity: '美術館白牆', desc: '留白，是給生活的呼吸感 [cite: 21, 31]', icon: 'aperture', color: '#84A6D3' },
-        { time: '15:40', activity: '純白質感選物', desc: '拍拍那些精緻的小碎片 [cite: 28, 31]', icon: 'camera', color: '#C3AED9' }
+        { time: '9:20', activity: '公車站', desc: '前往台北當代藝術館', icon: 'bus', color: '#84A6D3' },
+        { time: '10:00', activity: '台北當代藝術館', desc: '看展，遲到自己買票', icon: 'color-palette', color: '#C3AED9' }
       ]
     }
   ],
   rain: [ // 🌟 躲室內 [cite: 10, 31]
     { 
-      title: '雨中地下樂園', 
+      title: '創館NPC', 
       items: [
-        { time: '14:00', activity: '地下街遊逛', desc: '不用撐傘也能漫步 2 公里 [cite: 10, 31]', icon: 'umbrella', color: '#84A6D3' },
-        { time: '16:00', activity: '懷舊遊戲場', desc: '在投幣機中忘記煩心事 [cite: 10, 24]', icon: 'game-controller', color: '#C3AED9' }
+        { time: '14:20', activity: '創意館', desc: '在創館當npc或是與其他npc對話', icon: 'school', color: '#84A6D3' }
       ]
     },
     { 
-      title: '雨天避難所', 
+      title: '受夠台北的天氣', 
       items: [
-        { time: '14:30', activity: '百貨公司展覽', desc: '躲開濕氣，沉浸在美感中 [cite: 31]', icon: 'color-palette', color: '#C95E9E' },
-        { time: '16:30', activity: '室內水族館', desc: '看著水母漂浮，時間也停了 [cite: 7, 31]', icon: 'fish', color: '#84A6D3' }
+        { time: '12:00', activity: '星巴克', desc: '遠離城市的喧囂', icon: 'color-palette', color: '#C95E9E' },
+        { time: '15:00', activity: '捷運科技大樓', desc: '還在下雨就快點搭捷運逃離大安吧', icon: 'bus', color: '#84A6D3' }
       ]
     },
     { 
-      title: '書堆裡的雨聲', 
+      title: '我怕練太壯', 
       items: [
-        { time: '15:00', activity: '24小時書店', desc: '躲進書堆裡等雨停 [cite: 31]', icon: 'book', color: '#C3AED9' },
-        { time: '17:00', activity: '陶藝手作室', desc: '親手捏出雨天的形狀 [cite: 7, 21]', icon: 'brush', color: '#C95E9E' }
+        { time: '13:00', activity: '國北健身房', desc: '跟著pizza葛格開練', icon: 'barbell', color: '#C3AED9' },
+        { time: '14:30', activity: '瑜伽墊上', desc: '收操不然明天痛爆', icon: 'body', color: '#C95E9E' }
+      ]
+    },
+    { 
+      title: '我又沒有唸書', 
+      items: [
+        { time: '13:00', activity: '圖書館', desc: '惡補考試或輕鬆看看書', icon: 'library', color: '#84A6D3' }
       ]
     }
   ],
   walk: [ // 🌟 散散步 [cite: 10, 31]
     { 
-      title: '綠色隧道漫遊', 
+      title: '嘿嘿種花', 
       items: [
-        { time: '16:00', activity: '富錦街林蔭', desc: '觀察路上可愛的建築與植物 [cite: 31]', icon: 'leaf', color: '#84A6D3' },
-        { time: '17:30', activity: '河堤吹風', desc: '聽聽自己的心跳聲 [cite: 5, 31]', icon: 'walk', color: '#C3AED9' }
+        { time: '13:30', activity: '國北', desc: '散步一邊種花', icon: 'walk', color: '#84A6D3' },
+        { time: '14:30', activity: '大安森林公園', desc: '學校逛膩了換個地方', icon: 'walk', color: '#C3AED9' }
       ]
     },
     { 
       title: '舊城區發現案', 
       items: [
-        { time: '15:00', activity: '大稻埕巷弄', desc: '在舊房子間尋找未來 [cite: 31]', icon: 'map', color: '#C3AED9' },
-        { time: '17:00', activity: '碼頭夕陽', desc: '這就是活著的感覺 [cite: 2, 48]', icon: 'sunny', color: '#C95E9E' }
+        { time: '15:00', activity: '大稻埕巷弄', desc: '在舊房子間尋找未來', icon: 'map', color: '#C3AED9' },
+        { time: '17:00', activity: '碼頭夕陽', desc: '這就是活著的感覺', icon: 'sunny', color: '#C95E9E' }
       ]
     },
     { 
-      title: '貓咪足跡觀察', 
+      title: '走路靠右菩薩保佑', 
       items: [
-        { time: '14:30', activity: '師大巷弄', desc: '猜測下一隻貓在哪出現 [cite: 10, 31]', icon: 'paw', color: '#84A6D3' },
-        { time: '16:00', activity: '社區小公園', desc: '盪個鞦韆讓大腦關機 [cite: 5, 31]', icon: 'walk', color: '#C3AED9' }
+        { time: '14:20', activity: '國北', desc: '走路前往美術館', icon: 'walk', color: '#84A6D3' },
+        { time: '14:40', activity: '社區小公園', desc: '逛逛展覽陶冶心靈', icon: 'color-palette', color: '#C3AED9' }
       ]
     }
   ],
   gift: [ // 🌟 買東西 [cite: 31]
     { 
-      title: 'P 人的購物質感', 
+      title: '忠孝東路走九遍', 
       items: [
-        { time: '14:30', activity: '設計師選物店', desc: '買些沒用但可愛的小東西 [cite: 31, 32]', icon: 'gift', color: '#C95E9E' },
-        { time: '16:00', activity: '復古玩具行', desc: '尋回 10 歲時的自己 [cite: 24, 31]', icon: 'cube', color: '#C3AED9' }
+        { time: '13:30', activity: '捷運科技大樓站', desc: '忠孝復興gogo', icon: 'bus', color: '#C95E9E' },
+        { time: '13:45', activity: '忠孝sogo', desc: '一輩子和我一起挑禮物嗎', icon: 'storefront', color: '#C3AED9' }
       ]
     },
     { 
-      title: '香味收集計畫', 
+      title: '勝利超人', 
       items: [
-        { time: '15:00', activity: '香氛調配室', desc: '帶走專屬這趟旅行的味道 [cite: 7, 31]', icon: 'flask', color: '#84A6D3' },
-        { time: '16:30', activity: '乾燥花手作', desc: '留住這 3 小時的美好 [cite: 21, 31]', icon: 'flower', color: '#C95E9E' }
+        { time: '14:30', activity: '勝立', desc: '速速買', icon: 'storefront', color: '#84A6D3' }
       ]
     },
     { 
-      title: '文房具迷航', 
+      title: '宅宅地下街', 
       items: [
-        { time: '14:00', activity: '進口文具專門', desc: '鋼筆寫下的都是心情 [cite: 31, 44]', icon: 'create', color: '#C3AED9' },
-        { time: '15:40', activity: '印章店手作', desc: '蓋下這次漫遊的足跡膠囊 [cite: 18, 19]', icon: 'bookmark', color: '#84A6D3' }
+        { time: '17:00', activity: '捷運科技大樓站', desc: '北車速速妹', icon: 'bus', color: '#C3AED9' },
+        { time: '17:30', activity: '北車地下街', desc: '北車地下街的價格好可怕', icon: 'storefront', color: '#84A6D3' }
       ]
-    }
+    },
+    { 
+      title: '中山地下街', 
+      items: [
+        { time: '17:00', activity: '捷運科技大樓站', desc: '中山速速妹', icon: 'bus', color: '#84A6D3' },
+        { time: '17:30', activity: '中山地下街', desc: '買 買 買', icon: 'storefront', color: '#C95E9E' }
+      ]
+    },
   ]
 };

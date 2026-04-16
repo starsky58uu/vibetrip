@@ -31,9 +31,8 @@ yarn-error.*
 *.pem
 
 # local env files
-.env
 .env*
-.env*.local
+!.env.example
 
 # typescript
 *.tsbuildinfo
@@ -41,3 +40,23 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# --- 補充建議 ---
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.swp
+
+# pnpm
+pnpm-debug.log*
+
+# Expo EAS Build
+.eas/
+build/
+
+# Testing
+coverage/
+
+# Windows
+Thumbs.db

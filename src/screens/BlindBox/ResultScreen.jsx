@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Dimensions 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Accelerometer } from 'expo-sensors';
-import * as Haptics from 'expo-haptics';
-import { mockPlans } from '../data/mockData';
+import { useBlindBoxLogic } from './hooks/useBlindBoxLogic'; 
 
 const { width } = Dimensions.get('window');
 
@@ -18,78 +16,17 @@ const themeColors = {
 };
 
 const ResultScreen = ({ route, navigation }) => {
-  // 🌟 從路由取得資料，並解構出 vibeKey
-  const { plan, vibeKey, timestamp } = route.params || {};
-  const [currentPlan, setCurrentPlan] = useState(plan || { title: '驚喜盲盒', items: [] });
-  
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const lastShakeDate = useRef(Date.now());
-
-  // 🌟 監聽首頁傳來的新行程（當點擊底部大按鈕跳轉時）
-  useEffect(() => {
-    if (plan) {
-      console.log("✅ 收到新行程：", plan.title);
-      setCurrentPlan(plan);
-      
-      // 入場動畫
-      fadeAnim.setValue(0);
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver: true
-      }).start();
-    }
-  }, [timestamp]); // 👈 透過時間戳記判斷是不是新的一次抽取
-
-  // 🌟 搖一搖感測器邏輯
-  useEffect(() => {
-    Accelerometer.setUpdateInterval(50);
-    const subscription = Accelerometer.addListener(({ x, y, z }) => {
-      const acceleration = Math.sqrt(x * x + y * y + z * z);
-      const now = Date.now();
-
-      // 判斷搖晃：門檻 2.0，冷卻時間 1 秒
-      if (acceleration > 2.0 && now - lastShakeDate.current > 1000) {
-        lastShakeDate.current = now;
-        handleReshuffle();
-      }
-    });
-
-    return () => subscription && subscription.remove();
-  }, [currentPlan, vibeKey]); // 👈 這裡要監聽，確保 handleReshuffle 抓得到最新的 Key
-
-  // 🌟 搖一搖洗牌邏輯
-  const handleReshuffle = async () => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    // 1. 動畫開始
-    Animated.timing(fadeAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
-      
-      // 2. 根據「目前的類別」抽新的
-      const category = vibeKey || 'cafe';
-      const options = mockPlans[category] || mockPlans['cafe'];
-      
-      // 隨機抽一個跟現在不一樣的行程
-      let nextPlan = options[Math.floor(Math.random() * options.length)];
-      if (options.length > 1) {
-        while (nextPlan.title === currentPlan.title) {
-          nextPlan = options[Math.floor(Math.random() * options.length)];
-        }
-      }
-
-      setCurrentPlan(nextPlan);
-
-      // 3. 動畫結束
-      Animated.timing(fadeAnim, { toValue: 1, duration: 150, useNativeDriver: true }).start();
-    });
-  };
+  // 透過 Hook 取得所有狀態與函式
+  const { 
+    currentTime, 
+    currentPlan, 
+    headerData, 
+    fadeAnim, 
+    handleReshuffle 
+  } = useBlindBoxLogic(route);
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerBadge}>
-        <View style={styles.dot} />
-        <Text style={styles.headerText}>大安區 · 偵測搖晃中 · ☁️ 22℃</Text>
-      </View>
 
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -117,6 +54,15 @@ const ResultScreen = ({ route, navigation }) => {
             <Ionicons name="phone-portrait-outline" size={24} color={themeColors.accentSub} />
             <Text style={styles.shakeText}>不滿意？搖一搖手機重新抽取！</Text>
           </View>
+          
+          <TouchableOpacity 
+            style={styles.reshuffleButton} 
+            activeOpacity={0.8}
+            onPress={handleReshuffle} 
+          >
+            <Ionicons name="refresh" size={20} color={themeColors.textMain} />
+            <Text style={styles.reshuffleButtonText}>再抽一次驚喜盲盒</Text>
+          </TouchableOpacity>
 
           <TouchableOpacity 
             style={styles.arButton} 
@@ -131,7 +77,6 @@ const ResultScreen = ({ route, navigation }) => {
     </View>
   );
 };
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: themeColors.background, paddingTop: 60 },
@@ -180,7 +125,13 @@ const styles = StyleSheet.create({
     borderWidth: 2.5, borderColor: '#1E1238',
     shadowColor: themeColors.textMain, shadowOffset: { width: 5, height: 5 }, shadowOpacity: 1, shadowRadius: 0,
   },
-  arButtonText: { fontFamily: 'VibePixel', fontSize: 17, color: '#362360' },
+  reshuffleButton: {
+    backgroundColor: 'rgba(201, 94, 158, 0.2)', 
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingVertical: 14, borderRadius: 16, marginBottom: 15, 
+    borderWidth: 2, borderColor: themeColors.accentMain, borderStyle: 'dashed', 
+  },
+  reshuffleButtonText: { fontFamily: 'VibePixel', fontSize: 16, color: themeColors.textMain, marginLeft: 8 },
 });
 
 export default ResultScreen;
