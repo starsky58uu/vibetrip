@@ -69,6 +69,7 @@ const HomeScreen = () => {
           <MapView
             ref={mapRef}
             style={StyleSheet.absoluteFillObject}
+            mapPadding={{ top: 0, right: 0, bottom: 300, left: 0 }}
             initialRegion={location}
             customMapStyle={originalPurpleMapStyle}
             showsUserLocation={true}
