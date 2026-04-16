@@ -100,7 +100,7 @@ const MapScreen = () => {
       </View>
 
       {!selectedSpot && !selectedCommunitySpot && (
-        <View style={styles.bottomBannerContainer}>
+        <View style={[styles.bottomBannerContainer, { bottom: 110 + insets.bottom }]}>
           <View style={styles.aiCard}>
             <Ionicons name={mapMode === 'personal' ? "information-circle" : "search"} size={24} color={themeColors.accentMain} />
             <View style={{ flex: 1, marginLeft: 12 }}>
