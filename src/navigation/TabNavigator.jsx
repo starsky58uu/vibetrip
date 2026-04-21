@@ -1,58 +1,97 @@
 import React from 'react';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context'; 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { themeColors } from '../constants/theme';
-
-import HomeScreen from '../screens/Home/HomeScreen';
-import ResultScreen from '../screens/BlindBox/ResultScreen';
-import ArScreen from '../screens/AR/ArScreen';
-import MapScreen from '../screens/Map/MapScreen';
+import { T } from '../constants/theme';
+import { useTheme } from '../context/ThemeContext';
+import HomeScreen    from '../screens/Home/HomeScreen';
+import TripScreen    from '../screens/Trip/TripScreen';
+import ExploreScreen from '../screens/Explore/ExploreScreen';
+import ProfileScreen from '../screens/Profile/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
 
-export default function TabNavigator() {
-  const insets = useSafeAreaInsets(); 
+const TABS = [
+  { name: 'Home',    zh: '主頁', icon: 'home-outline',    iconActive: 'home'    },
+  { name: 'Trip',    zh: '行程', icon: 'time-outline',    iconActive: 'time'    },
+  { name: 'Explore', zh: '探索', icon: 'map-outline',     iconActive: 'map'     },
+  { name: 'Profile', zh: '我的', icon: 'person-outline',  iconActive: 'person'  },
+];
+
+function TabBar({ state, navigation }) {
+  const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
 
   return (
+    <View style={[styles.outerWrap, { paddingBottom: insets.bottom + 4, backgroundColor: colors.paper }]}>
+      <View style={[styles.bar, { backgroundColor: colors.card, borderColor: colors.line }]}>
+        {state.routes.map((route, i) => {
+          const focused = state.index === i;
+          const tab = TABS[i];
+
+          const handlePress = () => {
+            if (route.name === 'Profile') {
+              navigation.navigate('Profile', { screen: 'ProfileMain' });
+            } else if (route.name === 'Trip') {
+              navigation.navigate('Trip', { screen: 'TripMain' });
+            } else {
+              navigation.navigate(route.name);
+            }
+          };
+
+          return (
+            <TouchableOpacity
+              key={route.key}
+              onPress={handlePress}
+              style={[styles.tabItem, focused && { backgroundColor: colors.ink }]}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={focused ? tab.iconActive : tab.icon}
+                size={20}
+                color={focused ? colors.paper : colors.ink3}
+              />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+export default function TabNavigator() {
+  return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
-        tabBarStyle: { 
-          position: 'absolute', 
-          bottom: 20 + insets.bottom, 
-          left: 15, 
-          right: 15,
-          backgroundColor: 'rgba(54, 35, 96, 0.95)', 
-          height: 70, 
-          paddingBottom: 10, 
-          paddingTop: 5, 
-          borderRadius: 20,
-          borderWidth: 2, 
-          borderColor: themeColors.textSub,
-          elevation: 5, 
-          shadowColor: '#000', 
-          shadowOffset: { width: 4, height: 4 }, 
-          shadowOpacity: 0.8, 
-          shadowRadius: 0, 
-        },
-        tabBarActiveTintColor: themeColors.accentMain,
-        tabBarInactiveTintColor: themeColors.textSub,
-        tabBarLabelStyle: { fontFamily: 'VibePixel', fontSize: 11 },
-        tabBarIcon: ({ focused, color }) => {
-          let iconName;
-          if (route.name === 'Home') iconName = focused ? 'home' : 'home-outline';
-          else if (route.name === 'Result') iconName = focused ? 'gift' : 'gift-outline';
-          else if (route.name === 'AR') iconName = focused ? 'scan' : 'scan-outline';
-          else if (route.name === 'Map') iconName = focused ? 'map' : 'map-outline';
-          return <Ionicons name={iconName} size={22} color={color} />;
-        },
-      })}
+      tabBar={props => <TabBar {...props} />}
+      screenOptions={{ headerShown: false }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ tabBarLabel: '主頁', headerShown: false }} />
-      <Tab.Screen name="Result" component={ResultScreen} options={{ tabBarLabel: '盲盒', headerShown: false }} />
-      <Tab.Screen name="AR" component={ArScreen} options={{ tabBarLabel: 'AR雷達', headerShown: false, tabBarStyle: { display: 'none' } }} />
-      <Tab.Screen name="Map" component={MapScreen} options={{ tabBarLabel: '足跡', headerShown: false }} />
+      <Tab.Screen name="Home"    component={HomeScreen} />
+      <Tab.Screen name="Trip"    component={TripScreen} />
+      <Tab.Screen name="Explore" component={ExploreScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  outerWrap: {
+    paddingTop: 10,
+    paddingHorizontal: 18,
+  },
+  bar: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderRadius: 100,
+    padding: 6,
+    gap: 4,
+  },
+  tabItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    borderRadius: 100,
+  },
+});

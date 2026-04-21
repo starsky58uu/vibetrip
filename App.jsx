@@ -1,33 +1,39 @@
 import React from 'react';
 import { View, StyleSheet, StatusBar, ActivityIndicator } from 'react-native';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { themeColors } from './src/constants/theme';
+import { T } from './src/constants/theme';
 import { useFontsLoaded } from './src/hooks/useFontsLoaded';
 import AppNavigator from './src/navigation/AppNavigator';
+import { ThemeProvider } from './src/context/ThemeContext';
+import { AuthProvider } from './src/context/AuthContext';
 
 export default function App() {
   const fontsLoaded = useFontsLoaded();
 
   if (!fontsLoaded) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={themeColors.accentMain} />
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color={T.accent} />
       </View>
     );
   }
 
   return (
-    <SafeAreaProvider>
-      <StatusBar barStyle="light-content" backgroundColor={themeColors.background} />
-      <SafeAreaView style={styles.appView} edges={['top', 'left', 'right']}>
-        <AppNavigator />
-      </SafeAreaView>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <AuthProvider>
+          <ThemeProvider>
+            <StatusBar barStyle="dark-content" backgroundColor={T.paper} />
+            <AppNavigator />
+          </ThemeProvider>
+        </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
-const styles = StyleSheet.create({ 
-  appView: { flex: 1, backgroundColor: themeColors.background },
-  loadingContainer: { flex: 1, justifyContent: 'center', backgroundColor: themeColors.background }
+const styles = StyleSheet.create({
+  loading: { flex: 1, justifyContent: 'center', backgroundColor: T.paper },
 });

@@ -7,7 +7,7 @@ import * as MediaLibrary from 'expo-media-library';
 
 import { CATEGORY_MAP } from '../constants/arData';
 import { fetchWithTimeout, getShortestAngle, getDistance, fmtSec, getBearing } from '../utils/helpers';
-import { getTdxToken, getBusETASec, getMrtETASec, getNearestYouBike, getBusRealTimeStatus } from '../services/transportApi';
+import { getTdxToken, getBusETASec, getMrtETASec, getNearestYouBike, getBusRealTimeStatus, searchPlaces } from '../services/transportApi';
 
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_API_KEY?.trim();
 
@@ -98,29 +98,10 @@ export const useArLogic = () => {
     Keyboard.dismiss();
     setLoading(true); setCandidates([]); setTransportOptions([]);
     try {
-        let url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${loc.latitude},${loc.longitude}&language=zh-TW&opennow=true&key=${GOOGLE_API_KEY}`;
-        if (CATEGORY_MAP[category]) {
-            url += `&radius=2000&type=${CATEGORY_MAP[category].type}`;
-            if (CATEGORY_MAP[category].keyword) url += `&keyword=${encodeURIComponent(CATEGORY_MAP[category].keyword)}`;
-        } else {
-            url += `&radius=50000&keyword=${encodeURIComponent(category)}`;
-        }
-        let res = await fetchWithTimeout(url);
-        let data = await res.json();
-        if (!data.results?.length) {
-            const tUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(category)}&location=${loc.latitude},${loc.longitude}&language=zh-TW&opennow=true&key=${GOOGLE_API_KEY}`;
-            res = await fetchWithTimeout(tUrl);
-            data = await res.json();
-        }
-        const parsed = (data.results || []).map((p) => ({
-                name: p.name,
-                latitude: p.geometry.location.lat,
-                longitude: p.geometry.location.lng,
-                rating: p.rating ?? null,
-                dist: getDistance(loc.latitude, loc.longitude, p.geometry.location.lat, p.geometry.location.lng),
-            })).sort((a, b) => a.dist - b.dist).slice(0, 5);
-        setCandidates(parsed);
-    } catch (err) { Alert.alert('連線失敗', '請檢查網路狀態'); } finally { setLoading(false); }
+      const results = await searchPlaces(category, loc.latitude, loc.longitude);
+      setCandidates(results.slice(0, 6));
+    } catch { Alert.alert('連線失敗', '請檢查網路狀態'); }
+    finally { setLoading(false); }
   };
 
   const onSelectCandidate = async (idx) => {
@@ -176,13 +157,21 @@ export const useArLogic = () => {
 
       
 const youbikePromise = async () => {
-        if (!token) return { mode: 'youbike', title: 'YouBike', icon: 'bicycle-outline', isAvailable: false, reason: '系統連線異常' };
-        
+        if (!token) {
+          console.warn('無法取得 TDX Token，YouBike 功能將無法使用');
+          return { mode: 'youbike', title: 'YouBike', icon: 'bicycle-outline', isAvailable: false, reason: '系統連線異常' };
+        }
         const startStation = await getNearestYouBike(loc.latitude, loc.longitude, token, true);
-        if (!startStation) return { mode: 'youbike', title: 'YouBike', icon: 'bicycle-outline', isAvailable: false, reason: '附近 1km 內無車可借' };
+        if (!startStation) {
+          console.warn('附近 1km 內無車可借');
+          return { mode: 'youbike', title: 'YouBike', icon: 'bicycle-outline', isAvailable: false, reason: '附近 1km 內無車可借' };
+        }
 
         const endStation = await getNearestYouBike(item.latitude, item.longitude, token, false);
-        if (!endStation) return { mode: 'youbike', title: 'YouBike', icon: 'bicycle-outline', isAvailable: false, reason: '目的地 1km 內無位可還' };
+        if (!endStation) {
+          console.warn('目的地 1km 內無位可還');
+          return { mode: 'youbike', title: 'YouBike', icon: 'bicycle-outline', isAvailable: false, reason: '目的地 1km 內無位可還' };
+        }
 
         const walkToStartSec = startStation.dist / 1.2; 
         const rideDist = getDistance(startStation.StationPosition.PositionLat, startStation.StationPosition.PositionLon, endStation.StationPosition.PositionLat, endStation.StationPosition.PositionLon);
@@ -207,7 +196,10 @@ const youbikePromise = async () => {
       const results = await Promise.all([
         walkPromise().catch(() => ({ mode: 'walking', title: '純步行', icon: 'walk-outline', isAvailable: false, reason: '規劃失敗' })), 
         transitPromise().catch(() => ({ mode: 'transit', title: '大眾運輸', icon: 'bus-outline', isAvailable: false, reason: '規劃失敗' })), 
-        youbikePromise().catch(() => ({ mode: 'youbike', title: 'YouBike', icon: 'bicycle-outline', isAvailable: false, reason: '規劃失敗' }))
+        youbikePromise().catch((err) => {
+          console.error('YouBike 規劃失敗:', err);
+          return { mode: 'youbike', title: 'YouBike', icon: 'bicycle-outline', isAvailable: false, reason: '規劃失敗' };
+        })
       ]);
 
       const orderKeys = ['transit', 'youbike', 'walking'];

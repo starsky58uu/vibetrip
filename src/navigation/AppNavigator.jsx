@@ -1,18 +1,23 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
-import { createStackNavigator } from '@react-navigation/stack'; 
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import TabNavigator from './TabNavigator';
-import WeatherDetailScreen from '../screens/Weather/WeatherDetailScreen';
+import ArScreen from '../screens/AR/ArScreen';
 
-const Stack = createStackNavigator();
+// AR lives outside tabs because it goes fullscreen (hides the tab bar)
+const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="MainTabs" component={TabNavigator} />
-        <Stack.Screen name="WeatherDetail" component={WeatherDetailScreen} />
+        <Stack.Screen
+          name="AR"
+          component={ArScreen}
+          options={{ presentation: 'fullScreenModal' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
