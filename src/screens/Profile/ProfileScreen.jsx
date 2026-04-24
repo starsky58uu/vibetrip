@@ -29,7 +29,17 @@ export default function ProfileScreen() {
 function ProfileMain({ navigation }) {
   const insets = useSafeAreaInsets();
   const { colors, theme, vibeStyle, setTheme, setVibeStyle } = useTheme();
+  const { user, isLoggedIn } = useAuth();
   const s = makeStyles(colors);
+
+  // 計算加入天數
+  const joinDays = user?.created_at
+    ? Math.floor((Date.now() - new Date(user.created_at).getTime()) / 86400000)
+    : null;
+
+  const displayName = user?.display_name || user?.username || '訪客旅人';
+  const handle      = user ? `@${user.username}` : '尚未登入';
+  const avatarChar  = displayName[0].toUpperCase();
 
   return (
     <ScrollView
@@ -44,18 +54,22 @@ function ProfileMain({ navigation }) {
 
       {/* ── Profile card ── */}
       <View style={s.profileCard}>
-        <View style={s.avatar}>
-          <Text style={s.avatarText}>M</Text>
+        <View style={[s.avatar, !isLoggedIn && { backgroundColor: colors.ink3 }]}>
+          <Text style={s.avatarText}>{avatarChar}</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.profileName}>User 旅人</Text>
-          <Text style={s.profileHandle}>@user_0808 · 加入 88 天</Text>
+          <Text style={s.profileName}>{displayName}</Text>
+          <Text style={s.profileHandle}>
+            {handle}{joinDays != null ? ` · 加入 ${joinDays} 天` : ''}
+          </Text>
         </View>
         <TouchableOpacity
           onPress={() => navigation.navigate('Login')}
           style={[s.editBtn, { borderColor: colors.line }]}
         >
-          <Text style={[s.editBtnText, { color: colors.ink }]}>編輯</Text>
+          <Text style={[s.editBtnText, { color: colors.ink }]}>
+            {isLoggedIn ? '編輯' : '登入'}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -472,6 +486,9 @@ function LoginScreen({ navigation }) {
             placeholderTextColor={T.ink4}
             autoCapitalize="none"
           />
+          {isRegister && (
+            <Text style={ls.fieldHint}>僅限英文字母、數字、底線（_），3–32 字元</Text>
+          )}
         </View>
 
         <View style={ls.field}>
@@ -484,6 +501,9 @@ function LoginScreen({ navigation }) {
             placeholderTextColor={T.ink4}
             secureTextEntry
           />
+          {isRegister && (
+            <Text style={ls.fieldHint}>至少 8 個字元</Text>
+          )}
         </View>
 
         {!!error && <Text style={ls.errorText}>{error}</Text>}
@@ -666,6 +686,7 @@ const ls = StyleSheet.create({
   field:        { marginBottom: 16 },
   fieldLabel:   { fontFamily: Fonts.mono, fontSize: 9, color: T.ink3, letterSpacing: 3, marginBottom: 7 },
   fieldInput:   { borderWidth: 1, borderColor: T.line, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, fontFamily: Fonts.serif, fontSize: 14, color: T.ink, backgroundColor: T.card },
+  fieldHint:    { fontFamily: Fonts.mono, fontSize: 9, color: T.ink4, marginTop: 5, letterSpacing: 0.5 },
 
   submitBtn:    { backgroundColor: T.ink, borderRadius: 100, paddingVertical: 15, alignItems: 'center', marginTop: 4, marginBottom: 24 },
   submitText:   { fontFamily: Fonts.serifBold, fontSize: 15, color: T.paper, letterSpacing: 1 },
