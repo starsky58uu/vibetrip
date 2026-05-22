@@ -10,6 +10,80 @@ export const VIBES = [
   { key: 'random', zh: '隨便都好', en: 'Surprise Me',  icon: 'random', accent: '#1C1A17' },
 ];
 
+// ── 深夜 / 凌晨 fallback（後端不可用時，確保不推薦已關店家）────────────────────
+export const TRIP_DATA_NIGHT = {
+  cafe: {
+    title: '深夜 · 宵夜咖啡時光',
+    subtitle: '凌晨才有的安靜，配一杯不睡的咖啡',
+    duration: 180,
+    items: [
+      { time: '00:00', dur: '30min', activity: '24h 全家 or 7-ELEVEN',   desc: '現磨咖啡配關東煮，深夜最誠實的組合', icon: 'cafe', dist: '步行 3 min', tag: '24H', mood: '☕' },
+      { time: '00:40', dur: '60min', activity: '鬧區夜間公園長椅',         desc: '帶著咖啡坐在夜裡，什麼都不用想',      icon: 'walk', dist: '步行 7 min', tag: '夜景', mood: '🌙' },
+      { time: '01:50', dur: '50min', activity: '深夜拉麵 or 鹹酥雞攤',    desc: '宵夜魂降臨，一碗湯或一包炸物',        icon: 'food', dist: '步行 5 min', tag: '宵夜', mood: '🍜' },
+    ],
+  },
+  food: {
+    title: '深夜 · 宵夜探險隊',
+    subtitle: '不是饞，只是深夜的胃比白天誠實',
+    duration: 180,
+    items: [
+      { time: '00:00', dur: '50min', activity: '鹹酥雞炸物攤',    desc: '九層塔香氣瀰漫，深夜最懂你的食物',   icon: 'food', dist: '步行 4 min', tag: '必吃',   mood: '🍗' },
+      { time: '01:00', dur: '40min', activity: '深夜拉麵館',       desc: '豚骨湯底 + 溏心蛋，暖胃又暖心',      icon: 'food', dist: '步行 6 min', tag: '24H',   mood: '🍜' },
+      { time: '01:50', dur: '40min', activity: '夜市燒烤攤',       desc: '串燒 + 台灣啤酒，這才叫宵夜',        icon: 'food', dist: '步行 8 min', tag: '宵夜',  mood: '🍺' },
+    ],
+  },
+  photo: {
+    title: '深夜 · 城市霓虹獵影',
+    subtitle: '夜裡的光更真實，按快門不需要理由',
+    duration: 180,
+    items: [
+      { time: '00:00', dur: '50min', activity: '夜間橋景 or 高架橋下',  desc: '城市燈火倒映水面，深夜才有的構圖', icon: 'photo', dist: '步行 10 min', tag: '夜景',   mood: '🌃' },
+      { time: '01:00', dur: '50min', activity: '便利商店霓虹燈招牌',    desc: '冷色光打在臉上，台灣版電影場景',   icon: 'photo', dist: '步行 5 min',  tag: '霓虹',   mood: '📸' },
+      { time: '02:00', dur: '40min', activity: '夜市收攤後的空曠街道',  desc: '人少燈還在，孤獨感是這裡限定的',   icon: 'walk',  dist: '步行 8 min',  tag: '祕境',  mood: '🎞' },
+    ],
+  },
+  rain: {
+    title: '深夜 · 室內避雨漫遊',
+    subtitle: '雨聲加上深夜，最適合什麼都不做',
+    duration: 180,
+    items: [
+      { time: '00:00', dur: '60min', activity: '24h 漫畫咖啡館',     desc: '包廂隔音好，漫畫讀到天亮都沒事',   icon: 'photo', dist: '步行 5 min', tag: '避雨',  mood: '📚' },
+      { time: '01:10', dur: '50min', activity: '麥當勞 24H 店',      desc: '薯條 + 手機，深夜的社會觀察場',    icon: 'food',  dist: '步行 4 min', tag: '24H',   mood: '🍟' },
+      { time: '02:10', dur: '40min', activity: '超商窗邊座位',       desc: '看雨打在玻璃上，配一罐啤酒剛好',   icon: 'cafe',  dist: '步行 3 min', tag: '靜謐', mood: '🌧' },
+    ],
+  },
+  walk: {
+    title: '深夜 · 城市慢步',
+    subtitle: '深夜的街道是另一個城市',
+    duration: 180,
+    items: [
+      { time: '00:00', dur: '60min', activity: '河濱夜間步道',        desc: '風吹過來，只有腳步聲和水聲',         icon: 'walk', dist: '步行 10 min', tag: '清醒', mood: '🌙' },
+      { time: '01:10', dur: '50min', activity: '空曠廣場夜遊',        desc: '平日人擠人的地方，深夜只有你',       icon: 'walk', dist: '步行 8 min',  tag: '祕境', mood: '🚶' },
+      { time: '02:10', dur: '30min', activity: '24h 超商補給站',      desc: '走累了進來，能量棒配熱咖啡',         icon: 'cafe', dist: '步行 5 min',  tag: '24H',  mood: '⚡' },
+    ],
+  },
+  gift: {
+    title: '深夜 · 便利商店尋寶',
+    subtitle: '深夜的選物，全靠直覺',
+    duration: 180,
+    items: [
+      { time: '00:00', dur: '40min', activity: '7-ELEVEN 限定商品區', desc: '聯名款 or 季節限定，撿便宜的好時機', icon: 'gift',  dist: '步行 3 min', tag: '限定品', mood: '🎁' },
+      { time: '00:50', dur: '50min', activity: '全家甜點冷藏櫃',      desc: '深夜糕點最療癒，選一個蛋糕帶走',    icon: 'food',  dist: '步行 4 min', tag: '甜點',   mood: '🍰' },
+      { time: '01:50', dur: '50min', activity: '夜市收攤前最後一逛',  desc: '老闆急著收，反而才肯讓價',          icon: 'gift',  dist: '步行 9 min', tag: '撿便宜', mood: '🧧' },
+    ],
+  },
+  random: {
+    title: '深夜 · 凌晨漂流',
+    subtitle: '反正睡不著，就讓深夜帶著走',
+    duration: 180,
+    items: [
+      { time: '00:00', dur: '30min', activity: '轉角遇到的燈亮超商', desc: '深夜的起點，永遠是全家或 7-11',   icon: 'cafe', dist: '步行 5 min',  tag: '偶遇', mood: '🎲' },
+      { time: '00:40', dur: '60min', activity: '漫無目的的夜間散步', desc: '跟著路燈走，不要計畫',             icon: 'walk', dist: '漫步 ~',      tag: '隨意', mood: '🌙' },
+      { time: '01:50', dur: '40min', activity: '路邊宵夜攤',         desc: '聞到香味就停，這就是深夜的命運',   icon: 'food', dist: '步行 6 min',  tag: '直覺', mood: '✨' },
+    ],
+  },
+};
+
 export const TRIP_DATA = {
   cafe: {
     title: '信義區 · 咖啡漫遊',
@@ -83,3 +157,14 @@ export const TRIP_DATA = {
     ],
   },
 };
+
+/**
+ * 根據現在時間返回合適的 fallback 行程資料。
+ * 深夜（22:00-05:59）或清晨（06:00-08:59）使用夜間版本，避免推薦已關閉店家。
+ */
+export function getFallbackTrip(vibeKey) {
+  const hour = new Date().getHours();
+  const isNight = hour >= 22 || hour < 9; // 22:00 ~ 08:59 用夜間 fallback
+  const source = isNight ? TRIP_DATA_NIGHT : TRIP_DATA;
+  return source[vibeKey] || source.random || TRIP_DATA.cafe;
+}

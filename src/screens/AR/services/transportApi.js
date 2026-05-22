@@ -4,17 +4,24 @@ import MRT_MAP from '../../../data/mrt_map.json';
 
 const TDX_CLIENT_ID     = process.env.EXPO_PUBLIC_TDX_CLIENT_ID?.trim();
 const TDX_CLIENT_SECRET = process.env.EXPO_PUBLIC_TDX_CLIENT_SECRET?.trim();
+const TDX_CONFIGURED    = !!(TDX_CLIENT_ID && TDX_CLIENT_SECRET);
 
-let cachedToken = null;
-let tokenExpiry = 0;
+let cachedToken  = null;
+let tokenExpiry  = 0;
+let failureCooldown = 0;   // 失敗後冷卻到此時間戳，避免重複打 API
 
 export const getTdxToken = async () => {
+  // 未設定 credentials → 靜默返回 null，不發任何請求
+  if (!TDX_CONFIGURED) return null;
+
   const now = Date.now();
   if (cachedToken && now < tokenExpiry) return cachedToken;
+  if (now < failureCooldown) return null;          // 冷卻中，不重試
+
   try {
     const body = Object.entries({
-      grant_type: 'client_credentials',
-      client_id: TDX_CLIENT_ID,
+      grant_type:    'client_credentials',
+      client_id:     TDX_CLIENT_ID,
       client_secret: TDX_CLIENT_SECRET,
     }).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
 
@@ -23,10 +30,14 @@ export const getTdxToken = async () => {
       { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body }
     );
     const data = await res.json();
+    if (!data.access_token) throw new Error('no token in response');
     cachedToken = data.access_token;
     tokenExpiry = now + (data.expires_in - 60) * 1000;
     return cachedToken;
-  } catch { return null; }
+  } catch {
+    failureCooldown = now + 5 * 60 * 1000;  // 失敗後 5 分鐘內不重試
+    return null;
+  }
 };
 
 // Places search — backend first, Google fallback

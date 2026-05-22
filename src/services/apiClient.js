@@ -3,6 +3,17 @@ const BASE = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
 
 const isConfigured = () => !!BASE;
 
+// ── Timeout helper ────────────────────────────────────────────────────────────
+const TIMEOUT_MS = 8000; // 8 秒沒回應就放棄（預設）
+
+// timeoutMs 可由呼叫端覆蓋（AI 生成類慢端點用 25 秒）
+function fetchWithTimeout(url, options = {}, timeoutMs = TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: ctrl.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 // ── Token management ─────────────────────────────────────────────────────────
 let _token = null;
 export const setAuthToken  = (t) => { _token = t; };
@@ -32,25 +43,26 @@ export async function apiGet(path, params = {}) {
   Object.entries(params).forEach(([k, v]) => {
     if (v != null) url.searchParams.set(String(k), String(v));
   });
-  const res = await fetch(url.toString(), { headers: makeHeaders() });
+  const res = await fetchWithTimeout(url.toString(), { headers: makeHeaders() });
   if (!res.ok) await throwApiError(res, path);
   return res.json();
 }
 
-export async function apiPost(path, body = {}) {
+// opts.timeoutMs — 覆蓋預設 8 秒（適用 AI 生成等慢端點）
+export async function apiPost(path, body = {}, opts = {}) {
   if (!isConfigured()) throw new Error('API_NOT_CONFIGURED');
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetchWithTimeout(`${BASE}${path}`, {
     method: 'POST',
     headers: makeHeaders(),
     body: JSON.stringify(body),
-  });
+  }, opts.timeoutMs ?? TIMEOUT_MS);
   if (!res.ok) await throwApiError(res, path);
   return res.json();
 }
 
 export async function apiPatch(path, body = {}) {
   if (!isConfigured()) throw new Error('API_NOT_CONFIGURED');
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetchWithTimeout(`${BASE}${path}`, {
     method: 'PATCH',
     headers: makeHeaders(),
     body: JSON.stringify(body),
@@ -61,9 +73,24 @@ export async function apiPatch(path, body = {}) {
 
 export async function apiDelete(path) {
   if (!isConfigured()) throw new Error('API_NOT_CONFIGURED');
-  const res = await fetch(`${BASE}${path}`, {
+  const res = await fetchWithTimeout(`${BASE}${path}`, {
     method: 'DELETE',
     headers: makeHeaders(),
   });
   if (!res.ok) await throwApiError(res, path);
+}
+
+// ── Multipart 上傳（圖片）────────────────────────────────────────────────────
+// ⚠️  不能手動設 Content-Type：FormData 需要瀏覽器/fetch 自動加 multipart boundary
+export async function apiUpload(path, formData) {
+  if (!isConfigured()) throw new Error('API_NOT_CONFIGURED');
+  const headers = {};
+  if (_token) headers['Authorization'] = `Bearer ${_token}`;
+  const res = await fetchWithTimeout(`${BASE}${path}`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+  if (!res.ok) await throwApiError(res, path);
+  return res.json();
 }

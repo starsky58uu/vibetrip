@@ -35,7 +35,8 @@ function TabBar({ state, navigation }) {
             if (route.name === 'Profile') {
               navigation.navigate('Profile', { screen: 'ProfileMain' });
             } else if (route.name === 'Trip') {
-              navigation.navigate('Trip', { screen: 'TripMain' });
+              // 不帶 params，僅聚焦 Tab，不清空 TripMain 已生成的行程
+              navigation.navigate('Trip');
             } else {
               navigation.navigate(route.name);
             }

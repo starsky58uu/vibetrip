@@ -29,9 +29,11 @@ export const T = {
 };
 
 // Typography font family names
+// serif / serifBold → Noto Serif TC（思源宋體繁體）
+//   ZenOldMincho 日文字集不含部分繁體字 → 已換為完整繁體覆蓋的明朝體
 export const Fonts = {
-  serif:        'ZenOldMincho_400Regular',
-  serifBold:    'ZenOldMincho_700Bold',
+  serif:        'NotoSerifTC_400Regular',
+  serifBold:    'NotoSerifTC_700Bold',
   latin:        'Fraunces_300Light',
   latinMed:     'Fraunces_500Medium',
   latinItalic:  'InstrumentSerif_400Regular_Italic',

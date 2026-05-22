@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import os; print\\(os.path.exists\\('C:\\\\\\\\\\\\\\\\Users\\\\\\\\\\\\\\\\Bee\\\\\\\\\\\\\\\\Desktop'\\)\\); import glob; print\\(glob.glob\\('C:\\\\\\\\\\\\\\\\Users\\\\\\\\\\\\\\\\Bee\\\\\\\\\\\\\\\\*'\\)\\)\")",
+      "Bash(dir \"C:\\\\Users\\\\Bee\")",
+      "Bash(dir \"C:\\\\Users\\\\Bee\\\\OneDrive\")"
+    ]
+  }
+}

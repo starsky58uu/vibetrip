@@ -26,6 +26,9 @@ export default {
         },
         ios: {
             supportsTablet: true,
+            config: {
+                googleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_API_KEY,
+            },
         },
         android: {
             adaptiveIcon: {
@@ -44,6 +47,6 @@ export default {
         web: {
             favicon: './assets/favicon.png',
         },
-        plugins: ['expo-font'],
+        plugins: ['expo-font', 'expo-secure-store'],
     },
 };

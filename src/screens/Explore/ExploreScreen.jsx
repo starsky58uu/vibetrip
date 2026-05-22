@@ -1,300 +1,521 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, FlatList,
+  ActivityIndicator, TextInput, Image, Modal, KeyboardAvoidingView,
+  Platform, RefreshControl, Alert,
 } from 'react-native';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Rect, G, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 
-import { T, Fonts } from '../../constants/theme';
+import { Fonts } from '../../constants/theme';
+import { useTheme } from '../../context/ThemeContext';
 import { apiGet, apiPost } from '../../services/apiClient';
 import { useAuth } from '../../context/AuthContext';
+import MapScreen from '../Map/MapScreen';
 
 const TopTab = createMaterialTopTabNavigator();
 
+// ── 時間格式 ──────────────────────────────────────────────────────────────────
+function timeAgo(isoStr) {
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return '剛剛';
+  if (m < 60) return `${m} 分鐘前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小時前`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? '昨天' : `${d} 天前`;
+}
+
+function avatarChar(s) {
+  return (s?.display_name || s?.username || '?')[0].toUpperCase();
+}
+
+// ── 主畫面 ────────────────────────────────────────────────────────────────────
 export default function ExploreScreen() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
+
   return (
-    <View style={[styles.wrapper, { paddingTop: insets.top }]}>
+    <View style={{ flex: 1, paddingTop: insets.top, backgroundColor: colors.paper }}>
       <TopTab.Navigator
         screenOptions={{
-          tabBarStyle:          styles.topTabBar,
-          tabBarLabelStyle:     styles.topTabLabel,
-          tabBarIndicatorStyle: styles.topTabIndicator,
-          tabBarActiveTintColor:   T.ink,
-          tabBarInactiveTintColor: T.ink3,
+          tabBarStyle:           { backgroundColor: colors.paper, borderBottomWidth: 1, borderBottomColor: colors.line, elevation: 0, shadowOpacity: 0 },
+          tabBarLabelStyle:      { fontFamily: Fonts.serif, fontSize: 13, letterSpacing: 0.5 },
+          tabBarIndicatorStyle:  { backgroundColor: colors.ink, height: 1.5 },
+          tabBarActiveTintColor:  colors.ink,
+          tabBarInactiveTintColor: colors.ink3,
         }}
       >
-        <TopTab.Screen name="Map"       component={MapTab}       options={{ tabBarLabel: '地圖' }} />
+        <TopTab.Screen name="Map"       component={MapScreen}    options={{ tabBarLabel: '地圖' }} />
         <TopTab.Screen name="Community" component={CommunityTab} options={{ tabBarLabel: '社群' }} />
       </TopTab.Navigator>
     </View>
   );
 }
 
-// ─── Map Tab ─────────────────────────────────────────────────────────────────
-
-const SPOTS = [
-  { id: 'sp1', x: '22%', y: '28%', label: 'Fika Fika',   tag: '☕', mine: true  },
-  { id: 'sp2', x: '52%', y: '42%', label: '四四南村',     tag: '📸', mine: true,  liked: 42 },
-  { id: 'sp3', x: '68%', y: '62%', label: 'ICHIGO',      tag: '🍰', mine: true  },
-  { id: 'sp4', x: '36%', y: '68%', label: '象山·六巨石',  tag: '🌇', mine: false, liked: 87 },
-  { id: 'sp5', x: '78%', y: '22%', label: '松菸後巷',     tag: '🌿', mine: false, liked: 23 },
-  { id: 'sp6', x: '15%', y: '55%', label: '光合作用書店', tag: '📖', mine: true  },
-  { id: 'sp7', x: '62%', y: '18%', label: '信義豆花',     tag: '🍮', mine: false, liked: 15 },
+// ── 社群 Tab ──────────────────────────────────────────────────────────────────
+const FILTERS = [
+  { label: '最新', sort: 'recent'  },
+  { label: '熱門', sort: 'popular' },
+  { label: '附近', sort: 'nearby'  },
 ];
 
-function MapTab() {
-  const [selected, setSelected] = useState('sp2');
-  const sp = SPOTS.find(s => s.id === selected) || SPOTS[0];
+const FALLBACK = [
+  { id: 'f1', author: { username: '里山行者', display_name: '里山行者', avatar_url: null }, content: '象山後山的祕徑，下午三點的光打進竹林，整個就是日劇場景 🌿', image_url: null, likes_count: 124, saves_count: 38, created_at: new Date(Date.now() - 7200000).toISOString(), viewer_state: { is_liked: false, is_saved: false } },
+  { id: 'f2', author: { username: '豆漿控', display_name: '豆漿控', avatar_url: null }, content: '信義巷口新開的麵店，招牌牛肉麵湯頭超濃郁，份量驚人，建議空腹前往 🍜', image_url: null, likes_count: 87, saves_count: 22, created_at: new Date(Date.now() - 18000000).toISOString(), viewer_state: { is_liked: false, is_saved: false } },
+  { id: 'f3', author: { username: '底片人', display_name: '底片人', avatar_url: null }, content: '光合作用書店的角落，週二下午幾乎沒有人，整個書架的光都是你的 📷', image_url: null, likes_count: 203, saves_count: 91, created_at: new Date(Date.now() - 86400000).toISOString(), viewer_state: { is_liked: false, is_saved: false } },
+  { id: 'f4', author: { username: '漫步者', display_name: '漫步者', avatar_url: null }, content: '四四南村週末限定市集，手作品質超好，文創小物和咖啡一起逛 🌸', image_url: null, likes_count: 56, saves_count: 17, created_at: new Date(Date.now() - 172800000).toISOString(), viewer_state: { is_liked: false, is_saved: false } },
+];
+
+function CommunityTab() {
+  const { isLoggedIn, user } = useAuth();
+  const { colors } = useTheme();
+
+  const [activeFilter, setActiveFilter] = useState('recent');
+  const [posts, setPosts]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [userLoc, setUserLoc]   = useState(null);
+
+  const [selectedPost, setSelectedPost] = useState(null);  // 詳情 modal
+  const [showCreate, setShowCreate]     = useState(false); // 發文 modal
+
+  // 取得 GPS（給「附近」用）
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+      const loc = await Location.getCurrentPositionAsync({});
+      setUserLoc(loc.coords);
+    })();
+  }, []);
+
+  const fetchPosts = useCallback(async (sort = activeFilter, isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    try {
+      const params = { sort, limit: 20 };
+      if (sort === 'nearby' && userLoc) {
+        params.lat = userLoc.latitude;
+        params.lon = userLoc.longitude;
+      }
+      const spots = await apiGet('/api/v1/spots/community', params);
+      setPosts(spots.length > 0 ? spots : FALLBACK);
+    } catch {
+      setPosts(FALLBACK);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [activeFilter, userLoc]);
+
+  useEffect(() => { fetchPosts(activeFilter); }, [activeFilter]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchPosts(activeFilter, true);
+  };
+
+  // 按讚
+  const handleLike = async (postId) => {
+    if (!isLoggedIn) { Alert.alert('請先登入', '登入後才能按讚'); return; }
+    setPosts(prev => prev.map(p => {
+      if (p.id !== postId) return p;
+      const liked = !p.viewer_state.is_liked;
+      return { ...p, likes_count: liked ? p.likes_count + 1 : p.likes_count - 1, viewer_state: { ...p.viewer_state, is_liked: liked } };
+    }));
+    if (selectedPost?.id === postId) {
+      setSelectedPost(prev => {
+        const liked = !prev.viewer_state.is_liked;
+        return { ...prev, likes_count: liked ? prev.likes_count + 1 : prev.likes_count - 1, viewer_state: { ...prev.viewer_state, is_liked: liked } };
+      });
+    }
+    try { await apiPost(`/api/v1/spots/community/${postId}/like`); } catch {}
+  };
+
+  // 收藏
+  const handleSave = async (postId) => {
+    if (!isLoggedIn) { Alert.alert('請先登入', '登入後才能收藏'); return; }
+    setPosts(prev => prev.map(p => {
+      if (p.id !== postId) return p;
+      const saved = !p.viewer_state.is_saved;
+      return { ...p, saves_count: saved ? p.saves_count + 1 : p.saves_count - 1, viewer_state: { ...p.viewer_state, is_saved: saved } };
+    }));
+    if (selectedPost?.id === postId) {
+      setSelectedPost(prev => {
+        const saved = !prev.viewer_state.is_saved;
+        return { ...prev, saves_count: saved ? prev.saves_count + 1 : prev.saves_count - 1, viewer_state: { ...prev.viewer_state, is_saved: saved } };
+      });
+    }
+    try { await apiPost(`/api/v1/spots/community/${postId}/save`); } catch {}
+  };
+
+  // 發文成功後加進列表頂端
+  const handlePostCreated = (newPost) => {
+    setPosts(prev => [newPost, ...prev]);
+  };
 
   return (
-    <View style={styles.mapContainer}>
-      {/* SVG 示意地圖背景 */}
-      <Svg
-        width="100%" height="100%"
-        viewBox="0 0 400 700"
-        preserveAspectRatio="xMidYMid slice"
-        style={StyleSheet.absoluteFillObject}
-      >
-        <Defs>
-          <LinearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#F0E4CB" />
-            <Stop offset="1" stopColor="#EDE1C9" />
-          </LinearGradient>
-        </Defs>
-        <Rect width="400" height="700" fill="url(#skyGrad)" />
-        <Path d="M-20 540 Q100 510 200 560 Q300 600 420 545 L420 700 L-20 700 Z" fill="#C8D4AA" fillOpacity="0.55" />
-        <Path d="M280 40 Q360 60 380 120 L420 130 L420 0 L260 0 Z"              fill="#C8D4AA" fillOpacity="0.45" />
-        <Path d="M-20 165 Q100 200 200 180 Q300 165 420 215" stroke="#A9C4D6" strokeWidth="28" fill="none" strokeOpacity="0.5" strokeLinecap="round" />
-        <Path d="M0 340 L400 340"   stroke="#FBF7EC" strokeWidth="22" />
-        <Path d="M180 0 L220 700"   stroke="#FBF7EC" strokeWidth="18" />
-        <Path d="M0 230 L400 265"   stroke="#FBF7EC" strokeWidth="12" />
-        <Path d="M0 470 L400 505"   stroke="#FBF7EC" strokeWidth="12" />
-        <Path d="M70 0 L90 700"     stroke="#FBF7EC" strokeWidth="10" />
-        <Path d="M300 0 L320 700"   stroke="#FBF7EC" strokeWidth="10" />
-        <G transform="translate(225, 310)">
-          <Rect x="-12" y="-28" width="24" height="34" fill="#B39A76" fillOpacity="0.85" />
-          <Rect x="-10" y="-22" width="20" height="5"  fill="#F0E4CB" />
-          <Rect x="-10" y="-10" width="20" height="5"  fill="#F0E4CB" />
-          <Path d="M-12 -28 L-6 -40 L6 -40 L12 -28 Z"  fill="#8B6F4E" />
-        </G>
-      </Svg>
-
-      <View style={styles.userDot} pointerEvents="none">
-        <View style={styles.userDotInner} />
+    <View style={{ flex: 1, backgroundColor: colors.paper }}>
+      {/* Filter */}
+      <View style={[s.filterWrapper, { borderBottomColor: colors.line }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
+          {FILTERS.map(f => (
+            <TouchableOpacity
+              key={f.sort}
+              onPress={() => setActiveFilter(f.sort)}
+              style={[
+                s.chip,
+                { borderColor: colors.line },
+                activeFilter === f.sort && { backgroundColor: colors.ink, borderColor: colors.ink },
+              ]}
+            >
+              <Text style={[
+                s.chipText,
+                { color: colors.ink3 },
+                activeFilter === f.sort && { color: colors.paper },
+              ]}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
-      {SPOTS.map(s => (
+      {/* Feed */}
+      {loading ? (
+        <View style={s.center}>
+          <ActivityIndicator size="large" color={colors.ink3} />
+        </View>
+      ) : (
+        <FlatList
+          data={posts}
+          keyExtractor={item => String(item.id)}
+          contentContainerStyle={{ paddingBottom: 80 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.ink3} />}
+          renderItem={({ item }) => (
+            <PostCard
+              post={item}
+              colors={colors}
+              onPress={() => setSelectedPost(item)}
+              onLike={() => handleLike(item.id)}
+              onSave={() => handleSave(item.id)}
+            />
+          )}
+        />
+      )}
+
+      {/* 發文 FAB */}
+      {isLoggedIn && (
         <TouchableOpacity
-          key={s.id}
-          onPress={() => setSelected(s.id)}
-          style={[styles.pin, { left: s.x, top: s.y }]}
-          activeOpacity={0.8}
+          style={[s.fab, { backgroundColor: colors.ink }]}
+          onPress={() => setShowCreate(true)}
+          activeOpacity={0.85}
         >
-          <View style={[
-            styles.pinBody,
-            s.mine ? styles.pinMine : styles.pinCommunity,
-            selected === s.id && styles.pinActive,
-          ]}>
-            <Text style={{ fontSize: selected === s.id ? 18 : 13 }}>{s.tag}</Text>
-          </View>
+          <Ionicons name="add" size={28} color={colors.paper} />
         </TouchableOpacity>
-      ))}
+      )}
 
-      <View style={styles.mapSheet}>
-        <View style={styles.mapSheetIcon}>
-          <Text style={{ fontSize: 26 }}>{sp.tag}</Text>
-          {sp.mine && <View style={styles.mineBadge}><Text style={styles.mineBadgeText}>✦</Text></View>}
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.mapSheetMeta}>
-            {sp.mine ? 'MY CAPSULE · 2 天前' : 'COMMUNITY · 熱門'}
-          </Text>
-          <Text style={styles.mapSheetName}>{sp.label}</Text>
-          <Text style={styles.mapSheetDesc}>
-            {sp.mine ? '紅磚牆 + 斜射光，還順手買了杯手沖。' : '隱藏版的好地方 ✨'}
-          </Text>
-          <View style={styles.mapSheetFooter}>
-            {!sp.mine && sp.liked != null && (
-              <Text style={styles.mapSheetLike}>♥ {sp.liked}</Text>
-            )}
-            <Text style={styles.mapSheetDist}>距你 240m</Text>
-          </View>
-        </View>
-      </View>
+      {/* 詳情 Modal */}
+      <PostDetailModal
+        post={selectedPost}
+        colors={colors}
+        onClose={() => setSelectedPost(null)}
+        onLike={() => selectedPost && handleLike(selectedPost.id)}
+        onSave={() => selectedPost && handleSave(selectedPost.id)}
+      />
 
-      <TouchableOpacity style={styles.addBtn} activeOpacity={0.8}>
-        <Text style={styles.addBtnText}>＋</Text>
-      </TouchableOpacity>
+      {/* 發文 Modal */}
+      <CreatePostModal
+        visible={showCreate}
+        colors={colors}
+        userLoc={userLoc}
+        onClose={() => setShowCreate(false)}
+        onCreated={handlePostCreated}
+      />
     </View>
   );
 }
 
-// ─── Community Tab ────────────────────────────────────────────────────────────
+// ── PostCard ──────────────────────────────────────────────────────────────────
+function PostCard({ post, colors, onPress, onLike, onSave }) {
+  const author = post.author;
+  const liked  = post.viewer_state?.is_liked;
+  const saved  = post.viewer_state?.is_saved;
 
-const FILTERS = ['最新', '熱門', '附近', '散步', '吃貨', '祕境'];
+  return (
+    <TouchableOpacity
+      style={[s.card, { backgroundColor: colors.card, borderColor: colors.line }]}
+      onPress={onPress}
+      activeOpacity={0.92}
+    >
+      {/* 圖片 */}
+      {post.image_url ? (
+        <Image source={{ uri: post.image_url }} style={s.cardImage} />
+      ) : null}
 
-// 後端 tag 不存在，依 content 關鍵字猜一個 emoji
-const TAG_ICONS = { '咖啡': '☕', '甜點': '🍰', '拍照': '📸', '散步': '🌿', '書店': '📖', '夜景': '🌃' };
-function guessEmoji(content = '') {
-  for (const [kw, emoji] of Object.entries(TAG_ICONS)) {
-    if (content.includes(kw)) return emoji;
-  }
-  return '✨';
+      <View style={s.cardBody}>
+        {/* 作者列 */}
+        <View style={s.authorRow}>
+          <View style={[s.avatar, { backgroundColor: colors.accent }]}>
+            <Text style={[s.avatarText, { color: colors.paper }]}>{avatarChar(author)}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.authorName, { color: colors.ink }]}>{author.display_name || author.username}</Text>
+            <Text style={[s.authorTime, { color: colors.ink3 }]}>@{author.username} · {timeAgo(post.created_at)}</Text>
+          </View>
+        </View>
+
+        {/* 內文 */}
+        <Text style={[s.content, { color: colors.ink2 }]} numberOfLines={3}>{post.content}</Text>
+
+        {/* 互動 */}
+        <View style={s.actions}>
+          <TouchableOpacity style={s.actionBtn} onPress={onLike}>
+            <Ionicons name={liked ? 'heart' : 'heart-outline'} size={18} color={liked ? '#E05555' : colors.ink3} />
+            <Text style={[s.actionNum, { color: liked ? '#E05555' : colors.ink3 }]}>{post.likes_count}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.actionBtn} onPress={onSave}>
+            <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={18} color={saved ? colors.accent : colors.ink3} />
+            <Text style={[s.actionNum, { color: saved ? colors.accent : colors.ink3 }]}>{post.saves_count}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
 }
 
-// 把 CommunitySpotResponse 轉成貼文格式
-function toPost(s) {
-  return {
-    id:    s.id,
-    user:  s.author?.display_name || s.author?.username || '旅人',
-    img:   guessEmoji(s.content),
-    title: (s.content || '').slice(0, 30) + ((s.content || '').length > 30 ? '…' : ''),
-    desc:  s.content || '',
-    likes: s.likes_count ?? 0,
-    saves: s.saves_count ?? 0,
-    isLiked: s.viewer_state?.is_liked ?? false,
+// ── PostDetailModal ───────────────────────────────────────────────────────────
+function PostDetailModal({ post, colors, onClose, onLike, onSave }) {
+  if (!post) return null;
+  const liked = post.viewer_state?.is_liked;
+  const saved = post.viewer_state?.is_saved;
+
+  return (
+    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+      <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={onClose} />
+      <View style={[s.modalSheet, { backgroundColor: colors.card, borderColor: colors.line }]}>
+        <View style={[s.modalHandle, { backgroundColor: colors.line }]} />
+
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {post.image_url && (
+            <Image source={{ uri: post.image_url }} style={s.modalImage} />
+          )}
+
+          <View style={{ padding: 20 }}>
+            {/* 作者 */}
+            <View style={s.authorRow}>
+              <View style={[s.avatar, { backgroundColor: colors.accent }]}>
+                <Text style={[s.avatarText, { color: colors.paper }]}>{avatarChar(post.author)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.authorName, { color: colors.ink }]}>{post.author.display_name || post.author.username}</Text>
+                <Text style={[s.authorTime, { color: colors.ink3 }]}>@{post.author.username} · {timeAgo(post.created_at)}</Text>
+              </View>
+              <TouchableOpacity onPress={onClose}>
+                <Ionicons name="close" size={24} color={colors.ink3} />
+              </TouchableOpacity>
+            </View>
+
+            {/* 全文 */}
+            <Text style={[s.modalContent, { color: colors.ink2 }]}>{post.content}</Text>
+
+            {/* 互動 */}
+            <View style={[s.modalActions, { borderTopColor: colors.line }]}>
+              <TouchableOpacity style={s.modalActionBtn} onPress={onLike}>
+                <Ionicons name={liked ? 'heart' : 'heart-outline'} size={22} color={liked ? '#E05555' : colors.ink3} />
+                <Text style={[s.modalActionText, { color: liked ? '#E05555' : colors.ink3 }]}>{post.likes_count} 個喜歡</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.modalActionBtn} onPress={onSave}>
+                <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={22} color={saved ? colors.accent : colors.ink3} />
+                <Text style={[s.modalActionText, { color: saved ? colors.accent : colors.ink3 }]}>{post.saves_count} 人收藏</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+// ── CreatePostModal ───────────────────────────────────────────────────────────
+function CreatePostModal({ visible, colors, userLoc, onClose, onCreated }) {
+  const [content, setContent]     = useState('');
+  const [imageUri, setImageUri]   = useState(null);
+  const [isPublic, setIsPublic]   = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  const reset = () => { setContent(''); setImageUri(null); setIsPublic(true); };
+
+  const pickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true, aspect: [4, 3], quality: 0.8,
+    });
+    if (!result.canceled) setImageUri(result.assets[0].uri);
   };
-}
 
-// 當後端沒有資料時的 fallback
-const FALLBACK_POSTS = [
-  { id: 1, user: '里山行者',  img: '🌿', title: '象山後山的祕徑',    desc: '下午三點的光打進竹林，整個就是日劇場景...', likes: 124, saves: 38, isLiked: false },
-  { id: 2, user: '豆漿控',    img: '🍜', title: '信義巷口新開的麵店', desc: '招牌牛肉麵湯頭超濃郁，份量驚人，建議空腹前往', likes: 87,  saves: 22, isLiked: false },
-  { id: 3, user: '底片人',    img: '📷', title: '光合作用書店角落',   desc: '週二下午幾乎沒有人，整個書架的光都是你的', likes: 203, saves: 91, isLiked: false },
-  { id: 4, user: '漫步者',    img: '🌸', title: '四四南村週末限定市集', desc: '手作品質超好，文創小物和咖啡一起逛', likes: 56, saves: 17, isLiked: false },
-];
-
-function CommunityTab() {
-  const { isLoggedIn } = useAuth();
-  const [activeFilter, setActiveFilter] = useState('最新');
-  const [posts, setPosts]     = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  // filter → sort 對照
-  const SORT_MAP = { '最新': 'recent', '熱門': 'popular', '附近': 'nearby' };
-
-  useEffect(() => {
-    setLoading(true);
-    const sort = SORT_MAP[activeFilter] || 'recent';
-    (async () => {
-      try {
-        const spots = await apiGet('/api/v1/spots/community', { sort, limit: 20 });
-        setPosts(spots.length > 0 ? spots.map(toPost) : FALLBACK_POSTS);
-      } catch (e) {
-        console.warn('[ExploreScreen] community API 失敗，用 fallback', e.message);
-        setPosts(FALLBACK_POSTS);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [activeFilter]);
-
-  const toggleLike = async (postId) => {
-    setPosts(prev => prev.map(p =>
-      p.id !== postId ? p : { ...p, isLiked: !p.isLiked, likes: p.isLiked ? p.likes - 1 : p.likes + 1 }
-    ));
-    if (isLoggedIn) {
-      try { await apiPost(`/api/v1/spots/community/${postId}/like`); }
-      catch (e) { /* silent */ }
+  const handleSubmit = async () => {
+    if (!content.trim()) { Alert.alert('請填寫內容'); return; }
+    if (!userLoc) { Alert.alert('無法取得位置', '請開啟定位權限後再試'); return; }
+    setSubmitting(true);
+    try {
+      await apiPost('/api/v1/spots/personal', {
+        latitude:  userLoc.latitude,
+        longitude: userLoc.longitude,
+        note:      content.trim(),
+        image_url: imageUri ?? undefined,
+        is_public: isPublic,
+      });
+      // 建立一個假的即時回應貼文（後端會有真的，下次 refresh 時更新）
+      const mockPost = {
+        id: `temp_${Date.now()}`,
+        author: { username: 'me', display_name: '我', avatar_url: null },
+        content: content.trim(),
+        image_url: imageUri ?? null,
+        likes_count: 0,
+        saves_count: 0,
+        created_at: new Date().toISOString(),
+        viewer_state: { is_liked: false, is_saved: false },
+      };
+      if (isPublic) onCreated(mockPost);
+      reset();
+      onClose();
+      Alert.alert('發布成功', isPublic ? '已分享到社群 🎉' : '已儲存為個人足跡');
+    } catch (e) {
+      Alert.alert('發布失敗', '請確認網路連線後再試');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <ScrollView style={styles.commScroll} showsVerticalScrollIndicator={false}>
-      {/* filter chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-        {FILTERS.map(f => (
-          <TouchableOpacity
-            key={f}
-            onPress={() => setActiveFilter(f)}
-            style={[styles.filterChip, activeFilter === f && styles.filterChipActive]}
-          >
-            <Text style={[styles.filterText, activeFilter === f && styles.filterTextActive]}>{f}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={onClose} />
+        <View style={[s.modalSheet, { backgroundColor: colors.card, borderColor: colors.line }]}>
+          <View style={[s.modalHandle, { backgroundColor: colors.line }]} />
 
-      {loading ? (
-        <View style={styles.loadingWrap}>
-          <ActivityIndicator size="small" color={T.ink3} />
-        </View>
-      ) : (
-        posts.map(post => (
-          <View key={post.id} style={styles.postCard}>
-            <View style={styles.postImg}>
-              <Text style={{ fontSize: 48 }}>{post.img}</Text>
-            </View>
-            <View style={styles.postBody}>
-              <View style={styles.postMeta}>
-                <Text style={styles.postUser}>@{post.user}</Text>
-              </View>
-              <Text style={styles.postTitle}>{post.title}</Text>
-              <Text style={styles.postDesc} numberOfLines={2}>{post.desc}</Text>
-              <View style={styles.postActions}>
-                <TouchableOpacity onPress={() => toggleLike(post.id)} style={styles.postAction}>
-                  <Text style={[styles.postActionText, post.isLiked && { color: T.stamp }]}>
-                    {post.isLiked ? '♥' : '♡'} {post.likes}
-                  </Text>
-                </TouchableOpacity>
-                <Text style={styles.postAction}>
-                  <Text style={styles.postActionText}>🔖 {post.saves}</Text>
-                </Text>
-              </View>
-            </View>
+          {/* Header */}
+          <View style={[s.createHeader, { borderBottomColor: colors.line }]}>
+            <TouchableOpacity onPress={() => { reset(); onClose(); }}>
+              <Text style={[s.createCancel, { color: colors.ink3 }]}>取消</Text>
+            </TouchableOpacity>
+            <Text style={[s.createTitle, { color: colors.ink }]}>分享足跡</Text>
+            <TouchableOpacity
+              style={[s.createSubmit, { backgroundColor: colors.ink }, submitting && { opacity: 0.5 }]}
+              onPress={handleSubmit}
+              disabled={submitting}
+            >
+              {submitting
+                ? <ActivityIndicator size="small" color={colors.paper} />
+                : <Text style={[s.createSubmitText, { color: colors.paper }]}>發布</Text>
+              }
+            </TouchableOpacity>
           </View>
-        ))
-      )}
-    </ScrollView>
+
+          <ScrollView keyboardShouldPersistTaps="handled" style={{ padding: 20 }}>
+            {/* 內文輸入 */}
+            <TextInput
+              style={[s.createInput, { color: colors.ink, borderColor: colors.line }]}
+              placeholder="寫下這裡發生了什麼…"
+              placeholderTextColor={colors.ink3}
+              multiline
+              value={content}
+              onChangeText={setContent}
+              maxLength={300}
+              autoFocus
+            />
+            <Text style={[s.charCount, { color: colors.ink4 }]}>{content.length}/300</Text>
+
+            {/* 圖片預覽 */}
+            {imageUri && (
+              <View style={s.previewWrap}>
+                <Image source={{ uri: imageUri }} style={s.preview} />
+                <TouchableOpacity style={s.previewRemove} onPress={() => setImageUri(null)}>
+                  <Ionicons name="close-circle" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* 工具列 */}
+            <View style={[s.createToolbar, { borderTopColor: colors.line }]}>
+              <TouchableOpacity style={s.toolBtn} onPress={pickImage}>
+                <Ionicons name="image-outline" size={22} color={colors.ink3} />
+                <Text style={[s.toolText, { color: colors.ink3 }]}>加入照片</Text>
+              </TouchableOpacity>
+
+              {/* 公開切換 */}
+              <TouchableOpacity
+                style={[s.toolBtn, s.publicToggle, { borderColor: colors.line }, isPublic && { backgroundColor: colors.accent + '22', borderColor: colors.accent }]}
+                onPress={() => setIsPublic(!isPublic)}
+              >
+                <Ionicons name={isPublic ? 'earth' : 'lock-closed'} size={18} color={isPublic ? colors.accent : colors.ink3} />
+                <Text style={[s.toolText, { color: isPublic ? colors.accent : colors.ink3 }]}>
+                  {isPublic ? '公開分享' : '僅自己'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
-const styles = StyleSheet.create({
-  wrapper:          { flex: 1, backgroundColor: T.paper },
-  topTabBar:        { backgroundColor: T.paper, borderBottomWidth: 1, borderBottomColor: T.line, elevation: 0, shadowOpacity: 0 },
-  topTabLabel:      { fontFamily: Fonts.serif, fontSize: 13, letterSpacing: 0.5 },
-  topTabIndicator:  { backgroundColor: T.ink, height: 1.5 },
+// ── Styles ────────────────────────────────────────────────────────────────────
+const s = StyleSheet.create({
+  // filter
+  filterWrapper: { borderBottomWidth: 1 },
+  filterRow:     { paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center' },
+  chip:          { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 100, borderWidth: 1, marginRight: 8 },
+  chipText:      { fontFamily: Fonts.serif, fontSize: 12 },
 
-  // Map tab
-  mapContainer:     { flex: 1, backgroundColor: T.paper2, position: 'relative' },
-  userDot:          { position: 'absolute', left: '44%', top: '48%', width: 18, height: 18, zIndex: 4 },
-  userDotInner:     { width: 18, height: 18, borderRadius: 9, backgroundColor: '#3E5873', borderWidth: 3, borderColor: T.paper },
-  pin:              { position: 'absolute', zIndex: 5, transform: [{ translateX: -20 }, { translateY: -44 }] },
-  pinBody:          { width: 40, height: 40, borderRadius: 20, borderBottomRightRadius: 4, transform: [{ rotate: '-45deg' }], alignItems: 'center', justifyContent: 'center', borderWidth: 1.5 },
-  pinMine:          { backgroundColor: T.paper, borderColor: T.accentDeep || '#8B3A22' },
-  pinCommunity:     { backgroundColor: T.paper, borderColor: '#4D5A30' },
-  pinActive:        { backgroundColor: T.accent, borderColor: T.accent, width: 50, height: 50, borderRadius: 25, borderBottomRightRadius: 5 },
-  mapSheet:         { position: 'absolute', bottom: 80, left: 14, right: 14, backgroundColor: 'rgba(245,239,227,0.95)', borderRadius: 24, padding: 16, borderWidth: 1, borderColor: T.line, flexDirection: 'row', gap: 12, zIndex: 10 },
-  mapSheetIcon:     { width: 64, height: 64, borderRadius: 14, backgroundColor: '#F3DCB2', alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  mineBadge:        { position: 'absolute', top: -4, right: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: T.stamp, alignItems: 'center', justifyContent: 'center' },
-  mineBadgeText:    { fontSize: 9, color: T.paper, fontWeight: '700' },
-  mapSheetMeta:     { fontFamily: Fonts.mono,      fontSize: 9,  letterSpacing: 3,   color: T.ink3 },
-  mapSheetName:     { fontFamily: Fonts.serifBold, fontSize: 17, color: T.ink,       marginTop: 2 },
-  mapSheetDesc:     { fontFamily: Fonts.serif,     fontSize: 12, color: T.ink2,      marginTop: 4, lineHeight: 18 },
-  mapSheetFooter:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 },
-  mapSheetLike:     { fontFamily: Fonts.mono, fontSize: 11, color: T.stamp },
-  mapSheetDist:     { fontFamily: Fonts.mono, fontSize: 11, color: T.ink3 },
-  addBtn:           { position: 'absolute', right: 18, top: 56, width: 48, height: 48, borderRadius: 24, backgroundColor: T.ink, alignItems: 'center', justifyContent: 'center', zIndex: 8 },
-  addBtnText:       { color: T.paper, fontSize: 22, lineHeight: 26 },
+  center:      { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  // Community tab
-  commScroll:       { flex: 1, backgroundColor: T.paper },
-  filters:          { padding: 14, gap: 8 },
-  filterChip:       { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 100, borderWidth: 1, borderColor: T.line },
-  filterChipActive: { backgroundColor: T.ink, borderColor: T.ink },
-  filterText:       { fontFamily: Fonts.serif, fontSize: 12, color: T.ink3 },
-  filterTextActive: { color: T.paper },
-  loadingWrap:      { paddingVertical: 40, alignItems: 'center' },
+  // card
+  card:        { marginHorizontal: 14, marginTop: 14, borderRadius: 20, borderWidth: 1, overflow: 'hidden' },
+  cardImage:   { width: '100%', height: 200, resizeMode: 'cover' },
+  cardBody:    { padding: 14 },
+  authorRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  avatar:      { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  avatarText:  { fontFamily: Fonts.serifBold, fontSize: 15 },
+  authorName:  { fontFamily: Fonts.serifBold, fontSize: 13 },
+  authorTime:  { fontFamily: Fonts.mono, fontSize: 10, marginTop: 1 },
+  content:     { fontFamily: Fonts.serif, fontSize: 14, lineHeight: 21 },
+  actions:     { flexDirection: 'row', gap: 20, marginTop: 12 },
+  actionBtn:   { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  actionNum:   { fontFamily: Fonts.mono, fontSize: 12 },
 
-  postCard:         { marginHorizontal: 14, marginBottom: 14, backgroundColor: T.card, borderWidth: 1, borderColor: T.line, borderRadius: 20, overflow: 'hidden' },
-  postImg:          { height: 120, backgroundColor: T.paper2, alignItems: 'center', justifyContent: 'center' },
-  postBody:         { padding: 14 },
-  postMeta:         { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  postUser:         { fontFamily: Fonts.mono,      fontSize: 11, color: T.ink3 },
-  postTitle:        { fontFamily: Fonts.serifBold, fontSize: 15, color: T.ink,  marginBottom: 4 },
-  postDesc:         { fontFamily: Fonts.serif,     fontSize: 12, color: T.ink2, lineHeight: 17 },
-  postActions:      { flexDirection: 'row', gap: 16, marginTop: 10 },
-  postAction:       {},
-  postActionText:   { fontFamily: Fonts.mono, fontSize: 12, color: T.ink3 },
+  // FAB
+  fab:         { position: 'absolute', right: 18, bottom: 18, width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 6 },
+
+  // modal shared
+  modalOverlay:{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)' },
+  modalSheet:  { borderTopLeftRadius: 28, borderTopRightRadius: 28, borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1, maxHeight: '88%' },
+  modalHandle: { width: 36, height: 4, borderRadius: 2, alignSelf: 'center', marginTop: 12, marginBottom: 4 },
+  modalImage:  { width: '100%', height: 240, resizeMode: 'cover' },
+  modalContent:{ fontFamily: Fonts.serif, fontSize: 15, lineHeight: 24, marginTop: 14 },
+  modalActions:{ flexDirection: 'row', gap: 24, marginTop: 20, paddingTop: 16, borderTopWidth: 1 },
+  modalActionBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  modalActionText:{ fontFamily: Fonts.serif, fontSize: 14 },
+
+  // create post
+  createHeader:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
+  createCancel:     { fontFamily: Fonts.serif, fontSize: 14 },
+  createTitle:      { fontFamily: Fonts.serifBold, fontSize: 15 },
+  createSubmit:     { paddingVertical: 7, paddingHorizontal: 16, borderRadius: 100 },
+  createSubmitText: { fontFamily: Fonts.serifBold, fontSize: 13 },
+  createInput:      { fontFamily: Fonts.serif, fontSize: 15, lineHeight: 24, minHeight: 120, textAlignVertical: 'top', borderWidth: 1, borderRadius: 14, padding: 14 },
+  charCount:        { fontFamily: Fonts.mono, fontSize: 10, textAlign: 'right', marginTop: 6, marginBottom: 14 },
+  previewWrap:      { position: 'relative', marginBottom: 14 },
+  preview:          { width: '100%', height: 180, borderRadius: 14, resizeMode: 'cover' },
+  previewRemove:    { position: 'absolute', top: 8, right: 8 },
+  createToolbar:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, borderTopWidth: 1, gap: 10 },
+  toolBtn:          { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  toolText:         { fontFamily: Fonts.serif, fontSize: 13 },
+  publicToggle:     { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 100, borderWidth: 1 },
 });

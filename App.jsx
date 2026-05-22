@@ -7,7 +7,25 @@ import { T } from './src/constants/theme';
 import { useFontsLoaded } from './src/hooks/useFontsLoaded';
 import AppNavigator from './src/navigation/AppNavigator';
 import { ThemeProvider } from './src/context/ThemeContext';
-import { AuthProvider } from './src/context/AuthContext';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
+
+// 內層 wrapper：等 auth 初始化（從 SecureStore 恢復 token）完成再渲染導航
+function AppContent() {
+  const { loading } = useAuth();
+  if (loading) {
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator size="large" color={T.accent} />
+      </View>
+    );
+  }
+  return (
+    <>
+      <StatusBar barStyle="dark-content" backgroundColor={T.paper} />
+      <AppNavigator />
+    </>
+  );
+}
 
 export default function App() {
   const fontsLoaded = useFontsLoaded();
@@ -25,8 +43,7 @@ export default function App() {
       <SafeAreaProvider>
         <AuthProvider>
           <ThemeProvider>
-            <StatusBar barStyle="dark-content" backgroundColor={T.paper} />
-            <AppNavigator />
+            <AppContent />
           </ThemeProvider>
         </AuthProvider>
       </SafeAreaProvider>
