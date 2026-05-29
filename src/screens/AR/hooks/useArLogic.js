@@ -5,11 +5,9 @@ import * as Location from 'expo-location';
 import * as Haptics from 'expo-haptics';
 import * as MediaLibrary from 'expo-media-library';
 
-import { fetchWithTimeout, getShortestAngle, getDistance, getBearing } from '../utils/helpers';
+import { getShortestAngle, getDistance, getBearing } from '../utils/helpers';
 import { getBusETASec, getMrtETASec, getNearestYouBike, getBusRealTimeStatus, searchPlaces } from '../services/transportApi';
-import { apiPost } from '../../../services/apiClient';
-
-const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_API_KEY?.trim();
+import { apiPost, apiGet } from '../../../services/apiClient';
 
 // ── Google maneuver → Ionicons 圖示 ──────────────────────────────────────────
 const MANEUVER_ICON = {
@@ -54,15 +52,14 @@ const MODE_CONFIG = {
 };
 const MODE_ORDER = ['transit_bus', 'transit_mrt', 'youbike', 'walking'];
 
-// ── Google Directions helper ────────────────────────────────────────────────
+// ── Directions helper（改走後端代理，金鑰留在伺服器）────────────────────────
 async function fetchGoogleDirections(olat, olng, dlat, dlng, mode) {
-  const url = `https://maps.googleapis.com/maps/api/directions/json` +
-    `?origin=${olat},${olng}` +
-    `&destination=${dlat},${dlng}` +
-    `&mode=${mode}&language=zh-TW&key=${GOOGLE_API_KEY}`;
-  const res  = await fetchWithTimeout(url);
-  const data = await res.json();
-  return data.routes?.[0] ?? null;
+  try {
+    const data = await apiGet('/api/v1/directions/raw', { olat, olng, dlat, dlng, mode });
+    return data.routes?.[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export const useArLogic = () => {

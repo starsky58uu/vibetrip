@@ -17,6 +17,9 @@ importers:
       '@expo-google-fonts/jetbrains-mono':
         specifier: ^0.4.1
         version: 0.4.1
+      '@expo-google-fonts/noto-sans-tc':
+        specifier: ^0.4.3
+        version: 0.4.3
       '@expo-google-fonts/noto-serif-tc':
         specifier: ^0.4.4
         version: 0.4.4
@@ -639,6 +642,9 @@ packages:
 
   '@expo-google-fonts/jetbrains-mono@0.4.1':
     resolution: {integrity: sha512-CslACrtMOcRwoWXCO7OMEI+9w3fukWSoBtvNz46OqPoogEuuoY0tkDY1O8sFumk8t0pC6Cx0Xr95O0TOQhpkug==}
+
+  '@expo-google-fonts/noto-sans-tc@0.4.3':
+    resolution: {integrity: sha512-69XAOTLPz0WlAxL6qJEKlDMxHsBd4J1M39HjV0gPF2o1xWVALOsVWvDgistnecVockA9wbU/tH5C/gyS2PdnHg==}
 
   '@expo-google-fonts/noto-serif-tc@0.4.4':
     resolution: {integrity: sha512-nNbTm4wez1oXI5K3296eY+S4Ud3aFigjmX0mwxV7L6F1GDCwqMdO5tfgGl4fhLti25GAmaKZy7HkiY6pYcEMlQ==}
@@ -3766,6 +3772,8 @@ snapshots:
   '@expo-google-fonts/instrument-serif@0.4.1': {}
 
   '@expo-google-fonts/jetbrains-mono@0.4.1': {}
+
+  '@expo-google-fonts/noto-sans-tc@0.4.3': {}
 
   '@expo-google-fonts/noto-serif-tc@0.4.4': {}
 

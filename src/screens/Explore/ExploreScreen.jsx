@@ -80,6 +80,7 @@ function CommunityTab() {
   const [loading, setLoading]   = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [userLoc, setUserLoc]   = useState(null);
+  const [locationDenied, setLocationDenied] = useState(false);
 
   const [selectedPost, setSelectedPost] = useState(null);  // 詳情 modal
   const [showCreate, setShowCreate]     = useState(false); // 發文 modal
@@ -88,7 +89,11 @@ function CommunityTab() {
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') return;
+      if (status !== 'granted') {
+        setLocationDenied(true);
+        return;
+      }
+      setLocationDenied(false);
       const loc = await Location.getCurrentPositionAsync({});
       setUserLoc(loc.coords);
     })();
@@ -112,7 +117,7 @@ function CommunityTab() {
     }
   }, [activeFilter, userLoc]);
 
-  useEffect(() => { fetchPosts(activeFilter); }, [activeFilter]);
+  useEffect(() => { fetchPosts(activeFilter); }, [activeFilter, fetchPosts]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -160,33 +165,44 @@ function CommunityTab() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.paper }}>
-      {/* Filter */}
+      {/* Filter — 文字 + 跳色底線（去掉黑色 pill）*/}
       <View style={[s.filterWrapper, { borderBottomColor: colors.line }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.filterRow}>
-          {FILTERS.map(f => (
-            <TouchableOpacity
-              key={f.sort}
-              onPress={() => setActiveFilter(f.sort)}
-              style={[
-                s.chip,
-                { borderColor: colors.line },
-                activeFilter === f.sort && { backgroundColor: colors.ink, borderColor: colors.ink },
-              ]}
-            >
-              <Text style={[
-                s.chipText,
-                { color: colors.ink3 },
-                activeFilter === f.sort && { color: colors.paper },
-              ]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {FILTERS.map((f, i) => {
+            const TONE = [colors.cRed, colors.cYellow, colors.cBlue];
+            const c   = TONE[i % TONE.length];
+            const on  = activeFilter === f.sort;
+            return (
+              <TouchableOpacity
+                key={f.sort}
+                onPress={() => setActiveFilter(f.sort)}
+                style={s.filterBtn}
+              >
+                <Text style={{
+                  fontSize: 13,
+                  color: on ? colors.ink : colors.ink3,
+                  fontWeight: on ? '700' : '500',
+                  letterSpacing: 0.5,
+                }}>
+                  {f.label}
+                </Text>
+                {on && <View style={[s.filterUnderline, { backgroundColor: c }]} />}
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 
       {/* Feed */}
-      {loading ? (
+      {activeFilter === 'nearby' && locationDenied ? (
+        <View style={s.center}>
+          <Ionicons name="location-outline" size={44} color={colors.ink3} style={{ marginBottom: 12 }} />
+          <Text style={[s.locDeniedTitle, { color: colors.ink }]}>需要定位權限</Text>
+          <Text style={[s.locDeniedSub, { color: colors.ink3 }]}>
+            開啟手機設定 → VibeTrip → 位置{'\n'}即可查看附近的足跡
+          </Text>
+        </View>
+      ) : loading ? (
         <View style={s.center}>
           <ActivityIndicator size="large" color={colors.ink3} />
         </View>
@@ -290,52 +306,53 @@ function PostCard({ post, colors, onPress, onLike, onSave }) {
 
 // ── PostDetailModal ───────────────────────────────────────────────────────────
 function PostDetailModal({ post, colors, onClose, onLike, onSave }) {
-  if (!post) return null;
-  const liked = post.viewer_state?.is_liked;
-  const saved = post.viewer_state?.is_saved;
+  const liked = post?.viewer_state?.is_liked;
+  const saved = post?.viewer_state?.is_saved;
 
   return (
-    <Modal visible animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={!!post} animationType="slide" transparent onRequestClose={onClose}>
       <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={onClose} />
       <View style={[s.modalSheet, { backgroundColor: colors.card, borderColor: colors.line }]}>
         <View style={[s.modalHandle, { backgroundColor: colors.line }]} />
 
-        <ScrollView showsVerticalScrollIndicator={false}>
-          {post.image_url && (
-            <Image source={{ uri: post.image_url }} style={s.modalImage} />
-          )}
+        {post && (
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {post.image_url && (
+              <Image source={{ uri: post.image_url }} style={s.modalImage} />
+            )}
 
-          <View style={{ padding: 20 }}>
-            {/* 作者 */}
-            <View style={s.authorRow}>
-              <View style={[s.avatar, { backgroundColor: colors.accent }]}>
-                <Text style={[s.avatarText, { color: colors.paper }]}>{avatarChar(post.author)}</Text>
+            <View style={{ padding: 20 }}>
+              {/* 作者 */}
+              <View style={s.authorRow}>
+                <View style={[s.avatar, { backgroundColor: colors.accent }]}>
+                  <Text style={[s.avatarText, { color: colors.paper }]}>{avatarChar(post.author)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.authorName, { color: colors.ink }]}>{post.author.display_name || post.author.username}</Text>
+                  <Text style={[s.authorTime, { color: colors.ink3 }]}>@{post.author.username} · {timeAgo(post.created_at)}</Text>
+                </View>
+                <TouchableOpacity onPress={onClose}>
+                  <Ionicons name="close" size={24} color={colors.ink3} />
+                </TouchableOpacity>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.authorName, { color: colors.ink }]}>{post.author.display_name || post.author.username}</Text>
-                <Text style={[s.authorTime, { color: colors.ink3 }]}>@{post.author.username} · {timeAgo(post.created_at)}</Text>
+
+              {/* 全文 */}
+              <Text style={[s.modalContent, { color: colors.ink2 }]}>{post.content}</Text>
+
+              {/* 互動 */}
+              <View style={[s.modalActions, { borderTopColor: colors.line }]}>
+                <TouchableOpacity style={s.modalActionBtn} onPress={onLike}>
+                  <Ionicons name={liked ? 'heart' : 'heart-outline'} size={22} color={liked ? '#E05555' : colors.ink3} />
+                  <Text style={[s.modalActionText, { color: liked ? '#E05555' : colors.ink3 }]}>{post.likes_count} 個喜歡</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={s.modalActionBtn} onPress={onSave}>
+                  <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={22} color={saved ? colors.accent : colors.ink3} />
+                  <Text style={[s.modalActionText, { color: saved ? colors.accent : colors.ink3 }]}>{post.saves_count} 人收藏</Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={onClose}>
-                <Ionicons name="close" size={24} color={colors.ink3} />
-              </TouchableOpacity>
             </View>
-
-            {/* 全文 */}
-            <Text style={[s.modalContent, { color: colors.ink2 }]}>{post.content}</Text>
-
-            {/* 互動 */}
-            <View style={[s.modalActions, { borderTopColor: colors.line }]}>
-              <TouchableOpacity style={s.modalActionBtn} onPress={onLike}>
-                <Ionicons name={liked ? 'heart' : 'heart-outline'} size={22} color={liked ? '#E05555' : colors.ink3} />
-                <Text style={[s.modalActionText, { color: liked ? '#E05555' : colors.ink3 }]}>{post.likes_count} 個喜歡</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.modalActionBtn} onPress={onSave}>
-                <Ionicons name={saved ? 'bookmark' : 'bookmark-outline'} size={22} color={saved ? colors.accent : colors.ink3} />
-                <Text style={[s.modalActionText, { color: saved ? colors.accent : colors.ink3 }]}>{post.saves_count} 人收藏</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        )}
       </View>
     </Modal>
   );
@@ -470,20 +487,24 @@ function CreatePostModal({ visible, colors, userLoc, onClose, onCreated }) {
 const s = StyleSheet.create({
   // filter
   filterWrapper: { borderBottomWidth: 1 },
-  filterRow:     { paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'center' },
+  filterRow:     { paddingHorizontal: 18, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 20 },
+  filterBtn:     { paddingVertical: 4, position: 'relative' },
+  filterUnderline: { position: 'absolute', bottom: -2, left: 0, right: 0, height: 2 },
   chip:          { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 100, borderWidth: 1, marginRight: 8 },
   chipText:      { fontFamily: Fonts.serif, fontSize: 12 },
 
-  center:      { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  center:        { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
+  locDeniedTitle:{ fontFamily: Fonts.serifBold, fontSize: 17, textAlign: 'center', marginBottom: 8 },
+  locDeniedSub:  { fontFamily: Fonts.serif, fontSize: 13, textAlign: 'center', lineHeight: 20 },
 
-  // card
-  card:        { marginHorizontal: 14, marginTop: 14, borderRadius: 20, borderWidth: 1, overflow: 'hidden' },
-  cardImage:   { width: '100%', height: 200, resizeMode: 'cover' },
-  cardBody:    { padding: 14 },
+  // card — 編輯風：純內容 + 上下細分隔線（不再用圓角描邊卡）
+  card:        { paddingHorizontal: 20, paddingVertical: 18, borderTopWidth: 1 },
+  cardImage:   { width: '100%', height: 180, resizeMode: 'cover', marginTop: 10 },
+  cardBody:    { paddingTop: 0 },
   authorRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   avatar:      { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  avatarText:  { fontFamily: Fonts.serifBold, fontSize: 15 },
-  authorName:  { fontFamily: Fonts.serifBold, fontSize: 13 },
+  avatarText:  { fontSize: 15, fontWeight: '700' },
+  authorName:  { fontSize: 13, fontWeight: '700' },
   authorTime:  { fontFamily: Fonts.mono, fontSize: 10, marginTop: 1 },
   content:     { fontFamily: Fonts.serif, fontSize: 14, lineHeight: 21 },
   actions:     { flexDirection: 'row', gap: 20, marginTop: 12 },

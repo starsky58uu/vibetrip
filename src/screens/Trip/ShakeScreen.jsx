@@ -19,10 +19,10 @@ export default function ShakeScreen() {
   const route = useRoute();
   const insets = useSafeAreaInsets();
 
-  const [vibeIndex, setVibeIndex] = useState(() => {
-    const key = route.params?.vibeKey || 'cafe';
-    return VIBES.findIndex(v => v.key === key) || 0;
-  });
+  // Vibe 固定不換（保留來自 Home 的選擇）；搖一搖只是「再抽一份同一 vibe 的新行程」。
+  const vibeKey = route.params?.vibeKey || 'cafe';
+  const vibe = VIBES.find(v => v.key === vibeKey) || VIBES[0];
+
   const [shakeCount, setShakeCount] = useState(0);
   const [shaking, setShaking] = useState(false);
 
@@ -30,8 +30,6 @@ export default function ShakeScreen() {
   const lastAccRef = useRef({ x: 0, y: 0, z: 0 });
   const driftAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
-
-  const vibe = VIBES[vibeIndex];
 
   // Drift animation (idle float)
   useEffect(() => {
@@ -64,8 +62,7 @@ export default function ShakeScreen() {
     ]).start();
 
     setTimeout(() => {
-      setVibeIndex(i => (i + 1) % VIBES.length);
-      setShaking(false);
+      setShaking(false);   // vibe 不換，僅做動畫＋次數＋觸覺回饋
     }, 350);
   };
 
@@ -120,10 +117,13 @@ export default function ShakeScreen() {
           )}
         </Animated.View>
 
+        <View style={styles.changeTag}>
+          <Text style={styles.changeTagText}>CHANGE OF MIND</Text>
+        </View>
         <Text style={styles.prompt}>
-          用力 <Text style={[styles.promptAccent, { color: vibe.accent }]}>搖</Text> 一搖 ——
+          不滿意？<Text style={[styles.promptAccent, { color: vibe.accent }]}>搖一搖</Text>{'\n'}再抽一份
         </Text>
-        <Text style={styles.promptSub}>不想吃麵？換下一個 vibe</Text>
+        <Text style={styles.promptSub}>同樣「{vibe.zh}」，但完全不同的店</Text>
 
         {/* counters */}
         <View style={styles.counters}>
@@ -148,14 +148,23 @@ export default function ShakeScreen() {
           onPress={triggerShake}
           activeOpacity={0.8}
         >
-          <Text style={styles.btnManualText}>手動模擬搖一搖</Text>
+          <Text style={styles.btnManualText}>搖一搖</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.btnGo}
-          onPress={() => navigation.navigate('TripMain', { vibeKey: vibe.key, refreshKey: Date.now() })}
+          onPress={() => {
+            // 有搖過才送 refreshKey 觸發重新生成；沒搖就單純返回，不動原本的行程
+            if (shakeCount > 0) {
+              navigation.navigate('TripMain', { vibeKey: vibe.key, refreshKey: Date.now() });
+            } else {
+              navigation.goBack();
+            }
+          }}
           activeOpacity={0.8}
         >
-          <Text style={styles.btnGoText}>看新行程 →</Text>
+          <Text style={styles.btnGoText}>
+            {shakeCount > 0 ? '看新行程 →' : '返回'}
+          </Text>
         </TouchableOpacity>
         <Text style={styles.hint}>✧ HAPTIC + MOTION SENSOR ✧</Text>
       </View>
@@ -225,15 +234,29 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
 
-  prompt: {
-    fontFamily: Fonts.serifBold,
-    fontSize: 20,
-    color: T.ink,
-    marginTop: 32,
-    letterSpacing: 1.5,
+  changeTag: {
+    marginTop: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: T.cYellow,
+    alignSelf: 'center',
   },
-  promptAccent: { fontFamily: Fonts.latinItalic, fontWeight: '400' },
-  promptSub: { fontFamily: Fonts.serif, fontSize: 13, color: T.ink3, marginTop: 4 },
+  changeTagText: {
+    color: T.ink,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+  },
+  prompt: {
+    fontSize: 22,
+    color: T.ink,
+    marginTop: 10,
+    textAlign: 'center',
+    fontWeight: '500',
+    lineHeight: 32,
+  },
+  promptAccent: { fontWeight: '700' },
+  promptSub: { fontSize: 12, color: T.ink3, marginTop: 8, textAlign: 'center', lineHeight: 18 },
 
   counters: {
     flexDirection: 'row',

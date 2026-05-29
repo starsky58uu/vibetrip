@@ -17,7 +17,7 @@ export default {
         },
         version: '1.0.0',
         orientation: 'portrait',
-        icon: './src/assets/icon.png',
+        icon: './assets/logo2.png',
         userInterfaceStyle: 'light',
         splash: {
             image: './src/assets/splash-icon.png',

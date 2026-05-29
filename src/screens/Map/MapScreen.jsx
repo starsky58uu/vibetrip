@@ -13,6 +13,7 @@ import { useMapLogic } from './hooks/useMapLogic';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import AddSpotModal from './components/AddSpotModal';
+import VibeIcon from '../../components/VibeIcon';
 
 const MapScreen = () => {
   const insets = useSafeAreaInsets();

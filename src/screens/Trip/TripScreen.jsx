@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert,
 } from 'react-native';
@@ -50,6 +50,28 @@ import { useAuth } from '../../context/AuthContext';
 
 const SAVED_TRIPS_KEY = 'vt_saved_trips';
 
+// ── 生成中輪播提示 ─────────────────────────────────────────────────────────────
+const LOADING_MSGS = [
+  '正在取得你的位置…',
+  '搜尋附近真實店家…',
+  '為你安排行程中…',
+  '確認路線距離…',
+];
+
+// ── 計算行程總時長（分） ────────────────────────────────────────────────────────
+function calcTotalMin(items = []) {
+  if (!items.length) return 0;
+  const stay = items.reduce((acc, it) => acc + (parseInt(it.dur) || 45), 0);
+  const transit = 10 * (items.length - 1);  // 每站之間 10 分鐘緩衝
+  return stay + transit;
+}
+function fmtDuration(min) {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h === 0) return `${m}m`;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
 const Stack = createNativeStackNavigator();
 
 // ── 模組層級快取（跨 tab 切換存活，App 重啟才清除）─────────────────────────────
@@ -99,6 +121,8 @@ function TripMain({ route }) {
   const [excludeIds, setExcludeIds] = useState([]);
   const [saved, setSaved] = useState(false);        // 這趟行程是否已收藏
   const [saving, setSaving] = useState(false);
+  const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
+  const loadingIntervalRef = useRef(null);
 
   const fetchTrip = async (exclude = []) => {
     setLoading(true);
@@ -150,10 +174,22 @@ function TripMain({ route }) {
       // 完全沒有快取（App 首次開啟）→ 繼續 fetch 預設行程
     }
 
-    // 明確新請求 or 首次開啟無快取 → 重新生成
-    setExcludeIds([]);
     setSaved(false);
-    fetchTrip([]);
+
+    // 搖一搖（有 refreshKey）→ 把上次的 trip id 累加進 exclude，
+    // 確保拿到「同 vibe 但不同行程」的新一份（後端非空 exclude 會繞過快取＋避開該 id）
+    const isShake = !!route?.params?.refreshKey;
+    if (isShake && _tripCache?.id) {
+      setExcludeIds(prev => {
+        const next = [...prev, _tripCache.id];
+        fetchTrip(next);
+        return next;
+      });
+    } else {
+      // 從 Home 點 vibe / 首次開啟 → 從零開始
+      setExcludeIds([]);
+      fetchTrip([]);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route?.params?.vibeKey, route?.params?.refreshKey]);
 
@@ -194,16 +230,37 @@ function TripMain({ route }) {
     }
   }, [trip, isLoggedIn]);
 
+  // ── 載入提示輪播 ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (loading) {
+      setLoadingMsgIdx(0);
+      loadingIntervalRef.current = setInterval(() => {
+        setLoadingMsgIdx(prev => (prev + 1) % LOADING_MSGS.length);
+      }, 3000);
+    } else {
+      if (loadingIntervalRef.current) {
+        clearInterval(loadingIntervalRef.current);
+        loadingIntervalRef.current = null;
+      }
+    }
+    return () => {
+      if (loadingIntervalRef.current) {
+        clearInterval(loadingIntervalRef.current);
+        loadingIntervalRef.current = null;
+      }
+    };
+  }, [loading]);
+
   // ── 生成失敗：顯示重試畫面 ────────────────────────────────────────────────
   if (loadError) {
     return (
       <View style={[styles.container, styles.loadingCenter, { paddingTop: insets.top, backgroundColor: colors.paper }]}>
-        <Masthead onMenuPress={() => navigation.navigate('Profile', { screen: 'ProfileMain' })} colors={colors} />
+        <Masthead tabName="Trip" colors={colors} />
         <View style={styles.loadingBody}>
           <Ionicons name="alert-circle-outline" size={52} color={colors.ink3} style={{ marginBottom: 4 }} />
-          <Text style={[styles.loadingTitle, { color: colors.ink }]}>行程生成失敗</Text>
+          <Text style={[styles.loadingTitle, { color: colors.ink }]}>找不到合適行程</Text>
           <Text style={[styles.loadingText, { color: colors.ink2 }]}>
-            網路逾時或 AI 服務暫時忙碌{'\n'}請稍後再試一次
+            網路逾時或服務暫時忙碌{'\n'}請稍後再試一次
           </Text>
           <TouchableOpacity
             style={[styles.retryBtn, { backgroundColor: colors.ink }]}
@@ -211,7 +268,7 @@ function TripMain({ route }) {
             activeOpacity={0.8}
           >
             <Ionicons name="refresh" size={15} color={colors.paper} />
-            <Text style={[styles.retryText, { color: colors.paper }]}>重新生成</Text>
+            <Text style={[styles.retryText, { color: colors.paper }]}>重新探索</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -222,13 +279,14 @@ function TripMain({ route }) {
   if (loading || !trip) {
     return (
       <View style={[styles.container, styles.loadingCenter, { paddingTop: insets.top, backgroundColor: colors.paper }]}>
-        <Masthead onMenuPress={() => navigation.navigate('Profile', { screen: 'ProfileMain' })} colors={colors} />
+        <Masthead tabName="Trip" colors={colors} />
         <View style={styles.loadingBody}>
           <ActivityIndicator size="large" color={colors.ink} />
-          <Text style={[styles.loadingTitle, { color: colors.ink }]}>AI 生成中</Text>
+          <Text style={[styles.loadingTitle, { color: colors.ink }]}>探索中</Text>
           <Text style={[styles.loadingText, { color: colors.ink2 }]}>
-            正在搜尋附近景點，串接地圖與 AI{'\n'}通常約需 5–15 秒，請稍候…
+            {LOADING_MSGS[loadingMsgIdx]}
           </Text>
+          <Text style={[styles.loadingHint, { color: colors.ink3 }]}>通常約需 5–15 秒</Text>
         </View>
       </View>
     );
@@ -236,45 +294,51 @@ function TripMain({ route }) {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: colors.paper }]}>
-      <Masthead onMenuPress={() => navigation.navigate('Profile', { screen: 'ProfileMain' })} colors={colors} />
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={[styles.headerLabel, { color: colors.ink3 }]}>BLIND BOX · 3H</Text>
+      <Masthead tabName="Trip" colors={colors} />
+      {/* Header kicker */}
+      <View style={styles.kickerBar}>
+        <Text style={[styles.kickerText, { color: colors.ink3 }]}>
+          BLIND BOX · {fmtDuration(calcTotalMin(trip.items)).toUpperCase()}
+        </Text>
       </View>
 
-      {/* Title block */}
+      {/* Title block — editorial: NO.247 紅 tag + EN kicker + 標題 + 副標 */}
       <View style={styles.titleBlock}>
-        <View style={[styles.vibeStamp, { backgroundColor: vibeMeta.accent }]}>
-          <VibeIcon kind={vibeMeta.icon} size={30} color={colors.paper} />
+        <View style={styles.titleTagRow}>
+          <View style={[styles.titleTag, { backgroundColor: colors.cRed }]}>
+            <Text style={styles.titleTagText}>{vibeMeta.en.toUpperCase()}</Text>
+          </View>
+          <Text style={[styles.titleMeta, { color: colors.ink3 }]}>
+            {trip.items.length} STOPS · {fmtDuration(calcTotalMin(trip.items)).toUpperCase()}
+          </Text>
         </View>
-        <View style={styles.titleText}>
-          <Text style={[styles.titleLabel, { color: colors.ink3 }]}>NO.247 · {vibeMeta.en.toUpperCase()}</Text>
-          <Text style={[styles.titleH2, { color: colors.ink }]}>{trip.title}</Text>
-          {trip.subtitle ? <Text style={[styles.titleSub, { color: colors.tea }]}>「{trip.subtitle}」</Text> : null}
-        </View>
+        <Text style={[styles.titleH2, { color: colors.ink }]}>{trip.title}</Text>
+        {trip.subtitle ? (
+          <Text style={[styles.titleSub, { color: colors.ink3 }]}>{trip.subtitle}</Text>
+        ) : null}
       </View>
 
-      {/* Timeline */}
+      {/* Timeline — 跳色編號編輯式 */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.timelineContainer}>
-          <View style={[styles.dashLine, { borderLeftColor: colors.ink4 }]} />
-          {trip.items.map((item, i) => (
+        {(() => {
+          const POP_COLORS = [colors.cRed, colors.cYellow, colors.cBlue, colors.cGreen, colors.cCyan, colors.cPink];
+          return trip.items.map((item, i) => (
             <TimelineCard
               key={i}
               item={item}
               index={i}
-              vibeColor={vibeMeta.accent}
+              popColor={POP_COLORS[i % POP_COLORS.length]}
               colors={colors}
               last={i === trip.items.length - 1}
             />
-          ))}
-          <View style={styles.endNote}>
-            <Text style={[styles.endNoteText, { color: colors.ink3 }]}>— 回家的路自己決定 —</Text>
-          </View>
+          ));
+        })()}
+        <View style={styles.endNote}>
+          <Text style={[styles.endNoteText, { color: colors.ink3 }]}>— END · 回家的路自己決定 —</Text>
         </View>
       </ScrollView>
 
@@ -296,20 +360,35 @@ function TripMain({ route }) {
             borderColor: saved ? colors.ink : colors.line,
           }]}
           activeOpacity={0.7}
-          onPress={saved ? undefined : handleSaveTrip}
+          onPress={saved || saving ? undefined : handleSaveTrip}
           disabled={saving}
         >
-          <Ionicons
-            name={saved ? 'bookmark' : 'bookmark-outline'}
-            size={20}
-            color={saved ? colors.paper : colors.ink2}
-          />
+          {saving
+            ? <ActivityIndicator size="small" color={colors.ink2} />
+            : <Ionicons
+                name={saved ? 'bookmark' : 'bookmark-outline'}
+                size={20}
+                color={saved ? colors.paper : colors.ink2}
+              />
+          }
         </TouchableOpacity>
 
-        {/* AR 導航 */}
+        {/* AR 導航 — vibe 色 pill + iOS 黑色硬陰影 + 微歪 */}
         <TouchableOpacity
-          style={[styles.btnPrimary, { backgroundColor: colors.ink }]}
-          activeOpacity={0.8}
+          style={[
+            styles.btnPrimary,
+            {
+              backgroundColor: (() => {
+                const POP = [colors.cRed, colors.cYellow, colors.cBlue, colors.cGreen, colors.cCyan, colors.cPink, colors.ink];
+                const i = VIBES.findIndex(v => v.key === vibeKey);
+                return POP[(i >= 0 ? i : 0) % POP.length];
+              })(),
+              shadowColor: colors.ink,
+              shadowOffset: { width: 3, height: 3 }, shadowOpacity: 1, shadowRadius: 0,
+              transform: [{ rotate: '-0.4deg' }],
+            },
+          ]}
+          activeOpacity={0.85}
           onPress={() => navigation.navigate('AR', {
             mode: 'trip',
             tripTitle: trip.title,
@@ -323,7 +402,7 @@ function TripMain({ route }) {
             })),
           })}
         >
-          <Text style={[styles.btnPrimaryText, { color: colors.paper }]}>開啟 AR 導航</Text>
+          <Text style={[styles.btnPrimaryText, { color: colors.paper }]}>開始導覽</Text>
           <Ionicons name="arrow-forward" size={16} color={colors.paper} />
         </TouchableOpacity>
       </View>
@@ -331,37 +410,31 @@ function TripMain({ route }) {
   );
 }
 
-function TimelineCard({ item, index, vibeColor, colors }) {
+function TimelineCard({ item, index, popColor, colors, last }) {
   const C = colors ?? T;
   return (
-    <View style={styles.card}>
-      {/* dot */}
-      <View style={styles.dotCol}>
-        <View style={[styles.dot, { borderColor: vibeColor, backgroundColor: C.card }]}>
-          <Text style={[styles.dotNum, { color: vibeColor }]}>
-            {String(index + 1).padStart(2, '0')}
-          </Text>
-        </View>
+    <View style={[
+      styles.tlRow,
+      { borderTopColor: C.line, borderTopWidth: index === 0 ? 0 : 1 },
+    ]}>
+      {/* 左：大跳色編號 + time + dur */}
+      <View style={styles.tlLeft}>
+        <Text style={[styles.tlNum, { color: popColor }]}>
+          {String(index + 1).padStart(2, '0')}
+        </Text>
+        <Text style={[styles.tlTime, { color: C.ink3 }]}>{item.time}</Text>
+        <Text style={[styles.tlDur,  { color: C.ink4 }]}>{item.dur}</Text>
       </View>
-      {/* content */}
-      <View style={[styles.cardContent, { backgroundColor: C.card, borderColor: C.line }]}>
-        <View style={styles.cardHeader}>
-          <View style={styles.cardTimeRow}>
-            <Text style={[styles.cardTime, { color: C.ink }]}>{item.time}</Text>
-            <Text style={[styles.cardDur, { color: C.ink3 }]}>/ {item.dur}</Text>
+
+      {/* 右：活動 + 描述 + 跳色 tag + 距離 */}
+      <View style={styles.tlRight}>
+        <Text style={[styles.tlActivity, { color: C.ink }]}>{item.activity}</Text>
+        <Text style={[styles.tlDesc, { color: C.ink2 }]}>{item.desc}</Text>
+        <View style={styles.tlFooter}>
+          <View style={[styles.tlTag, { backgroundColor: popColor }]}>
+            <Text style={styles.tlTagText}>{item.tag}</Text>
           </View>
-          {/* mood emoji → Ionicons icon */}
-          <View style={[styles.moodIconBox, { backgroundColor: vibeColor + '1a' }]}>
-            <Ionicons name={getMoodIcon(item.tag, item.mood)} size={14} color={vibeColor} />
-          </View>
-        </View>
-        <Text style={[styles.cardActivity, { color: C.ink }]}>{item.activity}</Text>
-        <Text style={[styles.cardDesc, { color: C.ink2 }]}>{item.desc}</Text>
-        <View style={styles.cardFooter}>
-          <View style={[styles.chip, { borderColor: vibeColor + '88' }]}>
-            <Text style={[styles.chipText, { color: vibeColor }]}>{item.tag}</Text>
-          </View>
-          <Text style={[styles.cardDist, { color: C.ink3 }]}>→ {item.dist}</Text>
+          <Text style={[styles.tlDist, { color: C.ink3 }]}>→ {item.dist}</Text>
         </View>
       </View>
     </View>
@@ -389,14 +462,15 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: T.paper },
   loadingCenter: { flex: 1 },
   loadingBody: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 32 },
-  loadingTitle: { fontFamily: Fonts.serifBold, fontSize: 18, color: T.ink },
-  loadingText: { fontFamily: Fonts.serif, fontSize: 13, color: T.ink2, textAlign: 'center', lineHeight: 20 },
+  loadingTitle: { fontSize: 18, fontWeight: '700', color: T.ink },
+  loadingText: { fontSize: 13, color: T.ink2, textAlign: 'center', lineHeight: 20 },
+  loadingHint: { fontFamily: Fonts.mono, fontSize: 10, color: T.ink3, textAlign: 'center', letterSpacing: 1, marginTop: 2 },
   retryBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     marginTop: 12, paddingVertical: 12, paddingHorizontal: 28,
     borderRadius: 100, backgroundColor: T.ink,
   },
-  retryText: { fontFamily: Fonts.serifBold, fontSize: 14, color: T.paper },
+  retryText: { fontSize: 14, fontWeight: '700', color: T.paper },
 
   header: {
     flexDirection: 'row',
@@ -418,84 +492,53 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
+  // ── Header kicker — BLIND BOX · 3H ───────────────────────────────────
+  kickerBar: {
+    paddingHorizontal: 20, paddingTop: 6, paddingBottom: 2,
+    alignItems: 'center',
+  },
+  kickerText: {
+    fontFamily: Fonts.mono, fontSize: 9, letterSpacing: 4,
+  },
+
+  // ── 新版 Title block — 編輯感（EN 紅 tag + STOPS meta + 大標 + 副標）─────
   titleBlock: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingTop: 6,
+    paddingBottom: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: T.line,
   },
-  vibeStamp: {
-    width: 54, height: 54, borderRadius: 14,
-    alignItems: 'center', justifyContent: 'center',
-    transform: [{ rotate: '-4deg' }],
-  },
-  titleText: { flex: 1 },
-  titleLabel: { fontFamily: Fonts.mono, fontSize: 9, color: T.ink3, letterSpacing: 3.5 },
-  titleH2: { fontFamily: Fonts.serifBold, fontSize: 22, color: T.ink, lineHeight: 28, marginTop: 3 },
-  titleSub: { fontFamily: Fonts.latinItalic, fontSize: 13, color: T.tea, marginTop: 3 },
+  titleTagRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  titleTag:    { paddingHorizontal: 7, paddingVertical: 2 },
+  titleTagText:{ color: '#fff', fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
+  titleMeta:   { fontFamily: Fonts.mono, fontSize: 10, color: T.ink3, letterSpacing: 1 },
+  titleH2:     { fontSize: 22, fontWeight: '700', color: T.ink, lineHeight: 30, letterSpacing: -0.2 },
+  titleSub:    { fontSize: 12, color: T.ink3, marginTop: 4, lineHeight: 20 },
 
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingBottom: 4 },
-  timelineContainer: { position: 'relative' },
-  dashLine: {
-    position: 'absolute',
-    left: 21,
-    top: 10,
-    bottom: 80,
-    width: 0,
-    borderLeftWidth: 1.5,
-    borderLeftColor: T.ink4,
-    borderStyle: 'dashed',
-    opacity: 0.5,
-  },
+  scrollContent: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 4 },
 
-  card: { flexDirection: 'row', gap: 14, paddingVertical: 10 },
-  dotCol: {
-    width: 44,
-    flexShrink: 0,
+  // ── 新版 Timeline 編輯式列 ─────────────────────────────────────────────
+  tlRow: { flexDirection: 'row', gap: 14, paddingVertical: 16 },
+  tlLeft: { width: 50, flexShrink: 0 },
+  tlNum:  { fontFamily: Fonts.latinMed, fontSize: 30, fontWeight: '700', letterSpacing: -1, lineHeight: 30 },
+  tlTime: { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1, marginTop: 8 },
+  tlDur:  { fontFamily: Fonts.mono, fontSize: 9,  letterSpacing: 1, marginTop: 2 },
+  tlRight:    { flex: 1, minWidth: 0, paddingTop: 2 },
+  tlActivity: { fontSize: 16, fontWeight: '700', lineHeight: 22 },
+  tlDesc:     { fontSize: 12, lineHeight: 19, marginTop: 4 },
+  tlFooter:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
+  tlTag:      { paddingHorizontal: 7, paddingVertical: 2 },
+  tlTagText:  { color: '#fff', fontSize: 10, fontWeight: '600' },
+  tlDist:     { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 0.5 },
+
+  endNote: {
+    paddingVertical: 18,
     alignItems: 'center',
-    paddingTop: 18,
+    borderTopWidth: 1, borderTopColor: T.line, borderStyle: 'dashed',
   },
-  dot: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: T.card,
-    borderWidth: 1.5,
-    alignItems: 'center', justifyContent: 'center',
-    zIndex: 2,
-  },
-  dotNum: { fontFamily: Fonts.serifBold, fontSize: 11 },
-
-  cardContent: {
-    flex: 1,
-    backgroundColor: T.card,
-    borderWidth: 1,
-    borderColor: T.line,
-    borderRadius: 16,
-    padding: 14,
-  },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  cardTimeRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  cardTime: { fontFamily: Fonts.latin, fontSize: 17, fontWeight: '500', color: T.ink },
-  cardDur: { fontFamily: Fonts.mono, fontSize: 9, color: T.ink3 },
-  moodIconBox: {
-    width: 28, height: 28, borderRadius: 8,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  cardActivity: { fontFamily: Fonts.serifBold, fontSize: 15, color: T.ink, marginBottom: 4 },
-  cardDesc: { fontFamily: Fonts.serif, fontSize: 12, color: T.ink2, lineHeight: 18 },
-  cardFooter: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10 },
-  chip: {
-    borderWidth: 1,
-    borderRadius: 100,
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-  },
-  chipText: { fontFamily: Fonts.mono, fontSize: 10 },
-  cardDist: { fontFamily: Fonts.mono, fontSize: 9, color: T.ink3 },
-
-  endNote: { paddingVertical: 10, paddingLeft: 44 },
-  endNoteText: { fontFamily: Fonts.latinItalic, fontSize: 12, color: T.ink3 },
+  endNoteText: { fontFamily: Fonts.mono, fontSize: 10, color: T.ink3, letterSpacing: 2.5 },
 
   bottomBar: {
     flexDirection: 'row',
@@ -527,5 +570,5 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     backgroundColor: T.ink,
   },
-  btnPrimaryText: { fontFamily: Fonts.serifBold, fontSize: 14, color: T.paper, letterSpacing: 1, includeFontPadding: false },
+  btnPrimaryText: { fontSize: 14, fontWeight: '700', color: T.paper, letterSpacing: 1, includeFontPadding: false },
 });

@@ -1,12 +1,13 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet, Text, View, TouchableOpacity,
   TextInput, ActivityIndicator, ScrollView, Alert, Linking, Animated,
-  Modal, Image, KeyboardAvoidingView, Platform,
+  Modal, Image, KeyboardAvoidingView, Platform, BackHandler,
 } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import * as MediaLibrary from 'expo-media-library';
 import * as Location from 'expo-location';
 import { apiPost, apiUpload } from '../../services/apiClient';
@@ -58,7 +59,7 @@ export default function ArScreen({ navigation, route }) {
   const [caption, setCaption] = useState('');
   const [savingSpot, setSavingSpot] = useState(false);
 
-  // ── 箭頭動畫用的 Animated refs（只是 ref，不依賴 arrowAngle，放最前面沒問題）
+  // ── 箭頭動畫用的 Animated refs
   const arrowAnim    = useRef(new Animated.Value(0)).current;
   const lastAngleRef = useRef(0);
 
@@ -83,7 +84,7 @@ export default function ArScreen({ navigation, route }) {
     navDistanceM, navManeuverIcon, nextManeuver, etaDisplaySec, handleAlight,
   } = useArLogic();
 
-  // ── 即時距離計算（只在 DETAIL / PREVIEW / NAV 且有目標時顯示）──────────────
+  // ── 即時距離計算
   const distToTarget = (() => {
     if (!userLocation || !targetCoords) return null;
     return Math.round(getDistance(
@@ -92,26 +93,64 @@ export default function ArScreen({ navigation, route }) {
     ));
   })();
 
-  // ── 箭頭旋轉 effect（必須在 useArLogic 之後，arrowAngle 才有值）────────────
-  // ⚠️  不用 Animated.timing：heading 每 100~200ms 更新一次，
-  //     若每次都開新 timing 動畫，舊動畫不斷被打斷 → 箭頭亂轉。
-  //     heading 本身已平滑（0.35 係數），直接 setValue 即可流暢。
+  // ── 箭頭旋轉 effect
   useEffect(() => {
-    // 計算最短路徑差值（-180 ~ +180），避免過 0/360 邊界時繞遠路
     let diff = arrowAngle - ((lastAngleRef.current % 360) + 360) % 360;
     if (diff > 180)  diff -= 360;
     if (diff < -180) diff += 360;
     const next = lastAngleRef.current + diff;
     lastAngleRef.current = next;
-    arrowAnim.setValue(next);   // 直接設值，不開 timing
+    arrowAnim.setValue(next);
   }, [arrowAngle]);
 
-  // Animated.Value 可能超出 0-360（累積值），interpolate 轉成角度字串
   const arrowRotate = arrowAnim.interpolate({
     inputRange:  [-36000, 36000],
     outputRange: ['-36000deg', '36000deg'],
   });
 
+
+  // 🚀 =======================================================
+  // 🚀 ======= 這區是我搬上來的 (原本在下面 160 行左右) =======
+  // 🚀 =======================================================
+  
+  const handleBack = () => {
+    if (viewMode === 'NAV') {
+      resetAll();
+      if (arMode === 'trip') setShowTripList(true);
+    } else if (viewMode === 'PREVIEW') {
+      setViewMode('DETAIL');
+    } else if (viewMode === 'DETAIL') {
+      setViewMode('SEARCH'); setSelectedIdx(null); setTargetCoords(null);
+    } else if (viewMode === 'SEARCH' && candidates.length > 0) {
+      setCandidates([]); setSearchQuery('');
+    } else if (arMode === 'trip' && !showTripList) {
+      // 從搜尋/空狀態返回行程列表
+      setShowTripList(true);
+      setCandidates([]); setSearchQuery('');
+    } else {
+      navigation?.goBack?.();
+    }
+  };
+
+  // Android 硬體返回鍵
+  const handleBackRef = useRef(handleBack);
+  handleBackRef.current = handleBack;
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBackRef.current?.();
+        return true;            // 告訴 Android：這個 back 我們吃掉了
+      });
+      return () => sub.remove();
+    }, []),
+  );
+
+  // 🚀 =======================================================
+  // 🚀 ======= 搬移結束，這樣 Hooks 就會安穩地在 return 前執行完 =======
+  // 🚀 =======================================================
+
+
+  // ⚠️ 這裡是你原本的 early return！因為我們把上面的東西搬到它前面了，所以 React 就不會報錯囉！
   if (!permission?.granted) {
     return (
       <View style={styles.permBox}>
@@ -127,7 +166,6 @@ export default function ArScreen({ navigation, route }) {
     setTimeout(() => setToast(''), 3000);
   };
 
-  // ETA 倒數格式化：mm分ss秒 或 ss秒
   const fmtCountdown = (sec) => {
     if (sec == null || sec < 0) return '--';
     const m = Math.floor(sec / 60);
@@ -153,7 +191,6 @@ export default function ArScreen({ navigation, route }) {
     if (savingSpot) return;
     setSavingSpot(true);
     try {
-      // 1. 取得目前 GPS 位置
       let lat = 25.033, lon = 121.565; // fallback 台北
       try {
         const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -161,7 +198,6 @@ export default function ArScreen({ navigation, route }) {
         lon = pos.coords.longitude;
       } catch (e) { console.warn('[Spot] location failed:', e); }
 
-      // 2. 上傳圖片 → 取得 image_url
       let image_url = null;
       try {
         const form = new FormData();
@@ -170,7 +206,6 @@ export default function ArScreen({ navigation, route }) {
         image_url = uploaded.image_url;
       } catch (e) { console.warn('[Spot] upload failed:', e); }
 
-      // 3. 建立個人足跡
       await apiPost('/spots/personal', {
         latitude: lat,
         longitude: lon,
@@ -203,25 +238,6 @@ export default function ArScreen({ navigation, route }) {
           if (video?.uri) { await MediaLibrary.saveToLibraryAsync(video.uri); showToast('影片已存入相簿'); }
         } catch { setIsRecording(false); showToast('錄影失敗'); }
       }, 500);
-    }
-  };
-
-  const handleBack = () => {
-    if (viewMode === 'NAV') {
-      resetAll();
-      if (arMode === 'trip') setShowTripList(true);
-    } else if (viewMode === 'PREVIEW') {
-      setViewMode('DETAIL');
-    } else if (viewMode === 'DETAIL') {
-      setViewMode('SEARCH'); setSelectedIdx(null); setTargetCoords(null);
-    } else if (viewMode === 'SEARCH' && candidates.length > 0) {
-      setCandidates([]); setSearchQuery('');
-    } else if (arMode === 'trip' && !showTripList) {
-      // 從搜尋/空狀態返回行程列表
-      setShowTripList(true);
-      setCandidates([]); setSearchQuery('');
-    } else {
-      navigation?.goBack?.();
     }
   };
 
@@ -266,7 +282,7 @@ export default function ArScreen({ navigation, route }) {
             <Text style={styles.topTitle} numberOfLines={1}>
               {showTripList
                 ? tripTitle
-                : viewMode === 'NAV' ? '導航中'
+                : viewMode === 'NAV' ? (candidates[selectedIdx]?.name ?? '導航中')
                 : viewMode === 'PREVIEW' ? '確認路線'
                 : candidates[selectedIdx]?.name}
             </Text>

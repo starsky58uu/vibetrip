@@ -48,7 +48,7 @@ function ProfileMain({ navigation }) {
 
   const displayName = user?.display_name || user?.username || '訪客旅人';
   const handle      = user ? `@${user.username}` : '尚未登入';
-  const avatarChar  = displayName[0].toUpperCase();
+  const avatarChar  = (displayName || '?')[0].toUpperCase();
 
   // 載入使用者統計
   useEffect(() => {
@@ -88,23 +88,33 @@ function ProfileMain({ navigation }) {
       contentContainerStyle={s.profileContent}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Header ── */}
-      <Text style={s.issueLabel}>ISSUE · 043</Text>
-      <Text style={s.pageTitle}>旅人手帖</Text>
-      <Text style={s.pageSubtitle}>the wanderer's journal</Text>
+      {/* ── Header: ISSUE 黃 tag + 旅人手帖 + 日期 ── */}
+      <View style={s.headerRow}>
+        <View style={{ flex: 1 }}>
+          <View style={[s.issueTag, { backgroundColor: colors.cYellow }]}>
+            <Text style={s.issueTagText}>ISSUE 043</Text>
+          </View>
+          <Text style={s.pageTitle}>
+            旅人 <Text style={s.pageTitleHeavy}>手帖</Text>
+          </Text>
+        </View>
+        <Text style={[s.pageDate, { color: colors.ink3 }]}>2026·{String(new Date().getMonth() + 1).padStart(2, '0')}</Text>
+      </View>
 
-      {/* ── Profile card ── */}
-      <View style={s.profileCard}>
-        <View style={[s.avatar, !isLoggedIn && { backgroundColor: colors.ink3 }]}>
+      {/* ── Profile row ── */}
+      <View style={[s.profileRow, { borderBottomColor: colors.line }]}>
+        <View style={[s.avatarSq, { backgroundColor: isLoggedIn ? colors.ink : colors.ink3 }]}>
           <Text style={s.avatarText}>{avatarChar}</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.profileName}>{displayName}</Text>
-          <Text style={s.profileHandle}>{handle}</Text>
+          <Text style={[s.profileName, { color: colors.ink }]}>{displayName}</Text>
+          <Text style={[s.profileHandle, { color: colors.ink3 }]}>
+            {handle}{joinDays != null ? ` · DAY ${String(joinDays).padStart(3, '0')}` : ''}
+          </Text>
         </View>
         <TouchableOpacity
           onPress={() => navigation.navigate('Login')}
-          style={[s.editBtn, { borderColor: colors.line }]}
+          style={[s.editBtn, { borderColor: colors.ink }]}
         >
           <Text style={[s.editBtnText, { color: colors.ink }]}>
             {isLoggedIn ? '編輯' : '登入'}
@@ -112,88 +122,123 @@ function ProfileMain({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* ── AI taste card ── */}
-      <View style={s.tasteCard}>
-        {/* 標題列 + 重新分析按鈕 */}
-        <View style={s.tasteLabelRow}>
-          <Text style={s.tasteLabel}>AI 口味分析</Text>
+      {/* ── 01 漫遊品味 ── */}
+      <View style={[s.section, { borderBottomColor: colors.line }]}>
+        <View style={s.sectionHead}>
+          <Text style={[s.sectionNum, { color: colors.cRed }]}>01</Text>
+          <Text style={[s.sectionTitle, { color: colors.ink }]}>漫遊品味</Text>
           {tasteProfile?.generated && !tasteLoading && (
-            <TouchableOpacity onPress={() => loadTaste(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity
+              onPress={() => loadTaste(true)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ marginLeft: 'auto' }}
+            >
               <Ionicons name="refresh-outline" size={14} color={colors.ink3} />
             </TouchableOpacity>
           )}
         </View>
 
-        {/* 未登入 */}
         {!isLoggedIn && (
-          <Text style={s.tasteText}>「登入後，AI 解讀你的城市漫遊個性」</Text>
+          <Text style={[s.tasteQuote, { color: colors.ink }]}>「登入後，解讀你的城市漫遊個性。」</Text>
         )}
 
-        {/* 載入中 */}
         {isLoggedIn && tasteLoading && (
           <View style={{ alignItems: 'center', paddingVertical: 14 }}>
             <ActivityIndicator color={colors.ink3} />
-            <Text style={[s.tasteHint, { marginTop: 8 }]}>AI 分析中…</Text>
+            <Text style={[s.tasteFoot, { color: colors.ink3, marginTop: 8 }]}>解讀中…</Text>
           </View>
         )}
 
-        {/* 足跡不足（generated: false） */}
         {isLoggedIn && !tasteLoading && tasteProfile && !tasteProfile.generated && (
           <>
-            <Text style={s.tasteText}>「{tasteProfile.headline}」</Text>
-            <Text style={s.tasteHint}>{tasteProfile.subtitle}</Text>
+            <Text style={[s.tasteQuote, { color: colors.ink }]}>「{tasteProfile.headline}」</Text>
+            <Text style={[s.tasteFoot, { color: colors.ink3 }]}>{tasteProfile.subtitle}</Text>
           </>
         )}
 
-        {/* AI 完整分析 */}
         {isLoggedIn && !tasteLoading && tasteProfile?.generated && (
           <>
-            <Text style={s.tasteText}>
-              「{tasteProfile.headline}，{'\n'}
-              {tasteProfile.subtitle}」
+            <Text style={[s.tasteQuote, { color: colors.ink }]}>
+              你是個
+              <Text style={[s.markText, { backgroundColor: colors.cRed }]}> {tasteProfile.headline} </Text>
+              {'\n'}{tasteProfile.subtitle}
             </Text>
-
-            {/* 漫遊人格標籤 */}
             {tasteProfile.roaming_style ? (
-              <View style={s.tasteStyleBadge}>
-                <Text style={s.tasteStyleText}>{tasteProfile.roaming_style}</Text>
+              <View style={[s.roleTag, { backgroundColor: colors.cYellow }]}>
+                <Text style={s.roleTagText}>漫遊人格 · {tasteProfile.roaming_style}</Text>
               </View>
             ) : null}
-
-            {/* 標籤群 */}
             {tasteProfile.tags?.length > 0 && (
-              <View style={s.tasteTagsRow}>
+              <View style={s.tagsRow}>
                 {tasteProfile.tags.map((tag, i) => (
-                  <Text key={i} style={s.tasteTag}>#{tag}</Text>
+                  <Text key={i} style={[s.tagText, { color: colors.ink3 }]}>#{tag}</Text>
                 ))}
               </View>
             )}
-
-            {/* Vibe 偏好 */}
             {tasteProfile.top_vibes?.length > 0 && (
-              <Text style={s.tasteVibes}>
+              <Text style={[s.tasteFoot, { color: colors.ink3, marginTop: 8 }]}>
                 偏好 Vibe · {tasteProfile.top_vibes.join(' / ')}
               </Text>
             )}
           </>
         )}
+
+        {isLoggedIn && tasteProfile?.generated && (
+          <Text style={[s.tasteCredit, { color: colors.ink3 }]}>— 根據近 30 天足跡分析</Text>
+        )}
       </View>
 
-      {/* ── Stats grid ── */}
-      <View style={s.statsGrid}>
-        {statCells.map((x, i) => (
-          <View key={i} style={s.statCell}>
-            {statsLoading && i < 2
-              ? <ActivityIndicator size="small" color={colors.ink3} style={{ height: 28 }} />
-              : <Text style={s.statVal}>{x.v}</Text>
-            }
-            <Text style={s.statLab}>{x.l}</Text>
+      {/* ── 02 足跡統計 / 登入 CTA ── */}
+      <View style={[s.section, { borderBottomColor: colors.line }]}>
+        <View style={s.sectionHead}>
+          <Text style={[s.sectionNum, { color: colors.cBlue }]}>02</Text>
+          <Text style={[s.sectionTitle, { color: colors.ink }]}>
+            {isLoggedIn ? '足跡統計' : '解鎖完整功能'}
+          </Text>
+        </View>
+
+        {isLoggedIn ? (
+          <View style={[s.statsGrid, { borderLeftColor: colors.line }]}>
+            {[
+              { l: '足跡', v: stats?.spots_count ?? '…', c: colors.cRed,    spin: true },
+              { l: '盲盒', v: '—',                       c: colors.cYellow, spin: false },
+              { l: '收藏', v: stats?.saved_count ?? '…', c: colors.cBlue,   spin: true },
+              { l: '天',   v: joinDays != null ? joinDays : '—', c: colors.cGreen, spin: false },
+            ].map((x, i) => (
+              <View key={i} style={[s.statCell, { borderRightColor: colors.line }]}>
+                {statsLoading && x.spin ? (
+                  <ActivityIndicator size="small" color={colors.ink3} style={{ height: 28 }} />
+                ) : (
+                  <Text style={[s.statVal, { color: x.c }]}>{x.v}</Text>
+                )}
+                <Text style={[s.statLab, { color: colors.ink3 }]}>{x.l}</Text>
+              </View>
+            ))}
           </View>
-        ))}
+        ) : (
+          <TouchableOpacity
+            style={s.loginCta}
+            onPress={() => navigation.navigate('Login')}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="person-add-outline" size={22} color={colors.ink2} style={{ marginBottom: 6 }} />
+            <Text style={[s.loginCtaTitle, { color: colors.ink }]}>登入後解鎖完整功能</Text>
+            <Text style={[s.loginCtaSub, { color: colors.ink3 }]}>足跡同步 · 漫遊品味解析 · 行程收藏雲端備份</Text>
+            <View style={[s.loginCtaBtn, { backgroundColor: colors.ink }]}>
+              <Text style={[s.loginCtaBtnText, { color: colors.paper }]}>立即登入 →</Text>
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* ── Menu ── */}
-      <View style={s.menuCard}>
+      {/* ── 03 目錄 ── */}
+      <View style={[s.section, { borderBottomWidth: 0 }]}>
+        <View style={s.sectionHead}>
+          <Text style={[s.sectionNum, { color: colors.cGreen }]}>03</Text>
+          <Text style={[s.sectionTitle, { color: colors.ink }]}>目錄</Text>
+        </View>
+      </View>
+      <View style={[s.menuList, { borderTopColor: colors.ink }]}>
         {[
           {
             label: '我的膠囊',
@@ -205,27 +250,29 @@ function ProfileMain({ navigation }) {
             badge: isLoggedIn ? (stats?.saved_count != null ? String(stats.saved_count) : '…') : '—',
             onPress: isLoggedIn ? () => navigation.navigate('SavedSpots') : () => navigation.navigate('Login'),
           },
-          { label: '天氣通知',  badge: '開', onPress: () => navigation.navigate('Weather') },
+          { label: '天氣通知',  badge: 'ON', onPress: () => navigation.navigate('Weather') },
           { label: '帳號與登入', badge: '→', onPress: () => navigation.navigate('Login') },
-        ].map((item, i, arr) => (
+        ].map((item, i) => (
           <TouchableOpacity
             key={i}
-            style={[s.menuRow, i < arr.length - 1 && s.menuRowBorder]}
+            style={[s.menuRow, { borderBottomColor: colors.line }]}
             onPress={item.onPress}
             activeOpacity={0.7}
           >
-            <Text style={s.menuLabel}>{item.label}</Text>
-            <Text style={s.menuBadge}>{item.badge}</Text>
+            <Text style={[s.menuLabel, { color: colors.ink }]}>{item.label}</Text>
+            <Text style={[s.menuBadge, { color: colors.ink3 }]}>{item.badge}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* ── Appearance settings ── */}
-      <Text style={s.sectionTitle}>外觀設定</Text>
+      {/* ── 04 外觀設定 ── */}
+      <View style={s.section}>
+        <View style={s.sectionHead}>
+          <Text style={[s.sectionNum, { color: colors.cPink }]}>04</Text>
+          <Text style={[s.sectionTitle, { color: colors.ink }]}>外觀設定</Text>
+        </View>
 
-      {/* Theme picker */}
-      <View style={s.settingCard}>
-        <Text style={s.settingLabel}>主題色調</Text>
+        <Text style={[s.settingLabel, { color: colors.ink3, marginTop: 4 }]}>主題色調</Text>
         <View style={s.themeRow}>
           {THEMES.map(t => {
             const isActive = theme === t.key;
@@ -234,28 +281,20 @@ function ProfileMain({ navigation }) {
                 key={t.key}
                 onPress={() => setTheme(t.key)}
                 activeOpacity={0.7}
-                style={[
-                  s.themeChip,
-                  {
-                    backgroundColor: t.swatch,
-                    borderColor: isActive ? t.dot : colors.line,
-                    borderWidth: isActive ? 2 : 1,
-                  },
-                ]}
+                style={[s.themeChip, {
+                  backgroundColor: t.swatch,
+                  borderColor: isActive ? t.dot : colors.line,
+                  borderWidth: isActive ? 2 : 1,
+                }]}
               >
                 <View style={[s.themeDot, { backgroundColor: t.dot }]} />
-                <Text style={[s.themeChipText, { color: isActive ? t.dot : colors.ink2 }]}>
-                  {t.zh}
-                </Text>
+                <Text style={[s.themeChipText, { color: isActive ? t.dot : colors.ink2 }]}>{t.zh}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
-      </View>
 
-      {/* Vibe style picker */}
-      <View style={[s.settingCard, { marginTop: 10 }]}>
-        <Text style={s.settingLabel}>Vibe 按鈕樣式</Text>
+        <Text style={[s.settingLabel, { color: colors.ink3, marginTop: 14 }]}>Vibe 按鈕樣式</Text>
         <View style={s.vibeStyleRow}>
           {VIBE_STYLES.map(v => {
             const isActive = vibeStyle === v.key;
@@ -264,27 +303,19 @@ function ProfileMain({ navigation }) {
                 key={v.key}
                 onPress={() => setVibeStyle(v.key)}
                 activeOpacity={0.7}
-                style={[
-                  s.vibeStyleBtn,
-                  {
-                    backgroundColor: isActive ? colors.ink : 'transparent',
-                    borderColor: isActive ? colors.ink : colors.line,
-                  },
-                ]}
+                style={[s.vibeStyleBtn, {
+                  backgroundColor: isActive ? colors.ink : 'transparent',
+                  borderColor: isActive ? colors.ink : colors.line,
+                }]}
               >
-                <Text style={[s.vibeStyleText, { color: isActive ? colors.paper : colors.ink2 }]}>
-                  {v.zh}
-                </Text>
+                <Text style={[s.vibeStyleText, { color: isActive ? colors.paper : colors.ink2 }]}>{v.zh}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
-        <Text style={[s.settingHint, { color: colors.ink3 }]}>
-          設定後主頁的 Vibe 選擇器會切換樣式
-        </Text>
       </View>
 
-      <Text style={s.footer}>VibeTrip · NO.247 · 信義區漫遊</Text>
+      <Text style={[s.footer, { color: colors.ink4 }]}>VibeTrip</Text>
     </ScrollView>
   );
 }
@@ -815,96 +846,104 @@ function LoginScreen({ navigation }) {
 function makeStyles(C) {
   return StyleSheet.create({
     container:      { flex: 1, backgroundColor: C.paper },
-    profileContent: { padding: 20, paddingBottom: 50 },
+    profileContent: { paddingBottom: 50 },
 
-    issueLabel:  { fontFamily: Fonts.mono,   fontSize: 9,  color: C.ink3, letterSpacing: 5, marginBottom: 4 },
-    pageTitle:   { fontFamily: Fonts.serifBold, fontSize: 32, color: C.ink, lineHeight: 38, letterSpacing: 0.5 },
-    pageSubtitle:{ fontFamily: Fonts.latinItalic, fontSize: 14, color: C.tea, marginTop: 2, marginBottom: 20 },
+    // ── Header（ISSUE 黃 tag + 旅人手帖 + 日期）─────────────────────────
+    headerRow: {
+      flexDirection: 'row', alignItems: 'flex-end',
+      paddingHorizontal: 24, paddingTop: 8, paddingBottom: 14,
+    },
+    issueTag:     { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2 },
+    issueTagText: { color: C.ink, fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
+    pageTitle:    { fontSize: 22, fontWeight: '500', letterSpacing: 0.2, marginTop: 8, color: C.ink },
+    pageTitleHeavy: { fontWeight: '900', color: C.ink },
+    pageDate:     { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1.5, paddingBottom: 4 },
 
-    profileCard: {
+    // ── Profile row（無圓角，純列）──────────────────────────────────────
+    profileRow: {
       flexDirection: 'row', alignItems: 'center', gap: 12,
-      backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
-      borderRadius: 18, padding: 16, marginBottom: 12,
+      paddingHorizontal: 24, paddingVertical: 14,
+      borderBottomWidth: 1,
     },
-    avatar: {
-      width: 52, height: 52, borderRadius: 26,
-      backgroundColor: C.accent,
-      alignItems: 'center', justifyContent: 'center',
-    },
-    avatarText:   { fontFamily: Fonts.serifBold, fontSize: 20, color: '#fff' },
-    profileName:  { fontFamily: Fonts.serifBold, fontSize: 16, color: C.ink },
-    profileHandle:{ fontFamily: Fonts.mono,      fontSize: 10, color: C.ink3, marginTop: 3, letterSpacing: 1 },
-    editBtn:      { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 100, borderWidth: 1 },
-    editBtnText:  { fontFamily: Fonts.serif, fontSize: 11 },
+    avatarSq:     { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
+    avatarText:   { color: '#fff', fontSize: 20, fontWeight: '900' },
+    profileName:  { fontSize: 15, fontWeight: '700' },
+    profileHandle:{ fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 0.8, marginTop: 2 },
+    editBtn:      { paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1 },
+    editBtnText:  { fontSize: 11, fontWeight: '600' },
 
-    tasteCard:  {
-      backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
-      borderRadius: 18, padding: 16, marginBottom: 12,
+    // ── Section（編號 + 標題 + 內容）─────────────────────────────────────
+    section: {
+      paddingHorizontal: 24, paddingVertical: 20,
+      borderBottomWidth: 1,
     },
-    tasteLabelRow: {
-      flexDirection: 'row', alignItems: 'center',
-      justifyContent: 'space-between', marginBottom: 6,
-    },
-    tasteLabel:    { fontFamily: Fonts.mono, fontSize: 9, color: C.ink3, letterSpacing: 4 },
-    tasteText:     { fontFamily: Fonts.serifBold, fontSize: 16, color: C.ink, lineHeight: 26 },
-    tasteHint:     { fontFamily: Fonts.serif, fontSize: 12, color: C.ink3, marginTop: 4 },
-    tasteStyleBadge: {
+    sectionHead:  { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 8 },
+    sectionNum:   { fontFamily: Fonts.latinMed, fontSize: 22, fontWeight: '700', letterSpacing: -0.6 },
+    sectionTitle: { fontSize: 13, fontWeight: '700' },
+
+    // ── Taste 區（pull quote + 高亮 mark）────────────────────────────────
+    tasteQuote:   { fontSize: 18, fontWeight: '500', lineHeight: 28, letterSpacing: 0.1 },
+    markText:     { color: '#fff', fontWeight: '700' },
+    roleTag: {
       alignSelf: 'flex-start', marginTop: 12,
-      backgroundColor: C.accent, borderRadius: 100,
-      paddingVertical: 4, paddingHorizontal: 12,
+      paddingHorizontal: 8, paddingVertical: 3,
     },
-    tasteStyleText: { fontFamily: Fonts.serifBold, fontSize: 11, color: C.paper, letterSpacing: 0.5 },
-    tasteTagsRow:  { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
-    tasteTag:      { fontFamily: Fonts.mono, fontSize: 10, color: C.ink3, letterSpacing: 1 },
-    tasteVibes:    { fontFamily: Fonts.serif, fontSize: 11, color: C.ink3, marginTop: 8 },
+    roleTagText:  { color: C.ink, fontSize: 11, fontWeight: '700' },
+    tagsRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
+    tagText:      { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 0.8 },
+    tasteFoot:    { fontSize: 11, marginTop: 2 },
+    tasteCredit:  { fontSize: 11, marginTop: 12 },
 
-    statsGrid: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+    // ── 統計（4 欄無圓角）────────────────────────────────────────────────
+    statsGrid: { flexDirection: 'row', borderLeftWidth: 1 },
     statCell: {
-      flex: 1,
-      backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
-      borderRadius: 14, paddingVertical: 12, alignItems: 'center',
+      flex: 1, paddingHorizontal: 8, paddingVertical: 4,
+      borderRightWidth: 1,
     },
-    statVal:  { fontFamily: Fonts.latin,  fontSize: 22, fontWeight: '500', color: C.ink, minHeight: 28, textAlignVertical: 'center' },
-    statLab:  { fontFamily: Fonts.mono,   fontSize: 9,  color: C.ink3, marginTop: 3, letterSpacing: 2 },
+    statVal: { fontFamily: Fonts.latinMed, fontSize: 28, fontWeight: '700', letterSpacing: -1 },
+    statLab: { fontFamily: Fonts.mono, fontSize: 9, letterSpacing: 1.5, marginTop: 4 },
 
-    menuCard: {
-      backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
-      borderRadius: 18, overflow: 'hidden', marginBottom: 24,
+    // ── 登入 CTA（仍保留卡片感）──────────────────────────────────────────
+    loginCta: {
+      paddingVertical: 16, alignItems: 'center', gap: 4,
     },
-    menuRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16 },
-    menuRowBorder: { borderBottomWidth: 1, borderBottomColor: C.line, borderStyle: 'dashed' },
-    menuLabel:     { flex: 1, fontFamily: Fonts.serif, fontSize: 14, color: C.ink },
-    menuBadge:     { fontFamily: Fonts.mono, fontSize: 10, color: C.ink3 },
+    loginCtaTitle:   { fontSize: 15, fontWeight: '700', marginBottom: 2 },
+    loginCtaSub:     { fontSize: 12, textAlign: 'center', lineHeight: 18, marginBottom: 12 },
+    loginCtaBtn:     { paddingVertical: 10, paddingHorizontal: 28 },
+    loginCtaBtnText: { fontSize: 13, fontWeight: '700', letterSpacing: 0.5 },
 
-    sectionTitle: {
-      fontFamily: Fonts.mono, fontSize: 9, color: C.ink3,
-      letterSpacing: 4, marginBottom: 10,
+    // ── 目錄列表（無外框、上下分隔線）────────────────────────────────────
+    menuList: { borderTopWidth: 1, marginBottom: 4 },
+    menuRow:  {
+      flexDirection: 'row', alignItems: 'center',
+      paddingVertical: 14, paddingHorizontal: 24,
+      borderBottomWidth: 1,
     },
-    settingCard: {
-      backgroundColor: C.card, borderWidth: 1, borderColor: C.line,
-      borderRadius: 18, padding: 16, marginBottom: 0,
-    },
-    settingLabel: { fontFamily: Fonts.mono, fontSize: 9, color: C.ink3, letterSpacing: 3, marginBottom: 12 },
-    settingHint:  { fontFamily: Fonts.serif, fontSize: 11, marginTop: 10 },
+    menuLabel: { flex: 1, fontSize: 15, fontWeight: '500' },
+    menuBadge: { fontFamily: Fonts.mono, fontSize: 11, letterSpacing: 0.8 },
+
+    // ── 外觀設定 ─────────────────────────────────────────────────────────
+    settingLabel: { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1.5, marginBottom: 10 },
 
     themeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
     themeChip: {
       flexDirection: 'row', alignItems: 'center', gap: 6,
-      paddingVertical: 8, paddingHorizontal: 12, borderRadius: 100,
+      paddingVertical: 6, paddingHorizontal: 10,
     },
-    themeDot:      { width: 10, height: 10, borderRadius: 5 },
-    themeChipText: { fontFamily: Fonts.serif, fontSize: 12 },
+    themeDot:      { width: 8, height: 8 },
+    themeChipText: { fontSize: 11, fontWeight: '500' },
 
     vibeStyleRow: { flexDirection: 'row', gap: 8 },
     vibeStyleBtn: {
-      flex: 1, paddingVertical: 10, borderRadius: 100, borderWidth: 1,
+      flex: 1, paddingVertical: 9, borderWidth: 1,
       alignItems: 'center',
     },
-    vibeStyleText: { fontFamily: Fonts.serif, fontSize: 13 },
+    vibeStyleText: { fontSize: 12, fontWeight: '600' },
 
     footer: {
-      fontFamily: Fonts.mono, fontSize: 9, color: C.ink4,
-      letterSpacing: 3, textAlign: 'center', marginTop: 28,
+      fontFamily: Fonts.mono, fontSize: 9,
+      letterSpacing: 2.5, textAlign: 'center',
+      paddingTop: 24, paddingBottom: 16,
     },
   });
 }
@@ -923,7 +962,7 @@ function makeWsStyles(C) {
     weatherHero: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, marginTop: 6, marginBottom: 14 },
     weatherTemp: { fontFamily: Fonts.latin, fontSize: 80, fontWeight: '300', color: C.ink, lineHeight: 80 },
     weatherCond: { fontFamily: Fonts.serif, fontSize: 14, color: C.ink2, marginTop: 4 },
-    weatherQuote:{ fontFamily: Fonts.latinItalic, fontSize: 15, color: C.tea, lineHeight: 22, marginBottom: 16 },
+    weatherQuote:{ fontFamily: Fonts.serif, fontSize: 15, color: C.tea, lineHeight: 22, marginBottom: 16 },
 
     card:        { backgroundColor: C.card, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 14 },
     cardLabel:   { fontFamily: Fonts.mono, fontSize: 9, color: C.ink3, letterSpacing: 3, marginBottom: 10 },
@@ -947,7 +986,7 @@ function makeWsStyles(C) {
     detailVal:   { fontFamily: Fonts.latin, fontSize: 24, fontWeight: '500', color: C.ink },
     detailUnit:  { fontFamily: Fonts.mono, fontSize: 10, color: C.ink3 },
     detailHint:  { fontFamily: Fonts.serif, fontSize: 11, color: C.ink2, marginTop: 2 },
-    credit:      { fontFamily: Fonts.latinItalic, fontSize: 11, color: C.ink4, textAlign: 'center', marginTop: 14 },
+    credit:      { fontFamily: Fonts.mono, fontSize: 10, color: C.ink4, textAlign: 'center', marginTop: 14, letterSpacing: 1.5 },
   });
 }
 

@@ -75,7 +75,22 @@ export const useMapLogic = ({ isLoggedIn = false } = {}) => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') return;
-      const location = await Location.getCurrentPositionAsync({});
+
+      // 先用快取位置立即置中（幾乎零延遲）
+      const last = await Location.getLastKnownPositionAsync({});
+      if (last) {
+        const lastCoords = {
+          latitude:      last.coords.latitude,
+          longitude:     last.coords.longitude,
+          latitudeDelta: 0.03,
+          longitudeDelta: 0.03,
+        };
+        setUserLocation(lastCoords);
+        if (mapRef.current) mapRef.current.animateToRegion(lastCoords, 300);
+      }
+
+      // 再取精確位置，更新（可能比快取位置偏移一點點）
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const coords = {
         latitude:      location.coords.latitude,
         longitude:     location.coords.longitude,
@@ -83,7 +98,7 @@ export const useMapLogic = ({ isLoggedIn = false } = {}) => {
         longitudeDelta: 0.03,
       };
       setUserLocation(coords);
-      if (mapRef.current) mapRef.current.animateToRegion(coords, 1000);
+      if (mapRef.current) mapRef.current.animateToRegion(coords, 600);
     })();
   }, []);
 

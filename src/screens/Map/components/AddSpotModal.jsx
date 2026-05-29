@@ -11,10 +11,8 @@ export default function AddSpotModal({
   editingNote, setEditingNote,
   editingImage, pickImage, saveAndCloseSpot,
 }) {
-  if (!visible) return null;
-
   return (
-    <Modal visible={true} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
