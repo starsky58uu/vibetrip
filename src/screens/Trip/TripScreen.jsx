@@ -19,21 +19,29 @@ import { useAuth } from '../../context/AuthContext';
 
 const SAVED_TRIPS_KEY = 'vt_saved_trips';
 
-// ── 卡通膠囊風色票 ────────────────────────────────────────────────────────────
 const PAL = {
   yellow: '#E2E146',
   pink:   '#FF6FA8',
   blue:   '#2E45B0',
   black:  '#000000',
   white:  '#FFFFFF',
+  purple: '#9B26B6', 
 };
 
-// 停靠點膠囊輪播色（搭配標題粉紅）
-const STOP_COLORS = [PAL.white, PAL.blue, PAL.white, PAL.pink];
+// 動畫圖片陣列
+const VIBE_FRAMES = [
+  [require('../../../assets/vibe1.png'),  require('../../../assets/vibe2.png')],
+  [require('../../../assets/vibe3.png'),  require('../../../assets/vibe4.png')],
+  [require('../../../assets/vibe5.png'),  require('../../../assets/vibe6.png')],
+  [require('../../../assets/vibe7.png'),  require('../../../assets/vibe8.png')],
+  [require('../../../assets/vibe9.png'),  require('../../../assets/vibe10.png')],
+  [require('../../../assets/vibe11.png'), require('../../../assets/vibe12.png')],
+  [require('../../../assets/vibe13.png'), require('../../../assets/vibe13.png')],
+];
+
 // 判斷膠囊背景該配的字色
 const inkFor = (bg) => (bg === PAL.blue ? PAL.white : PAL.black);
 
-// ── tag / mood → Ionicons（之後可換成 Open Doodles 或自繪 PNG） ─────────────
 function getMoodIcon(tag = '', mood = '') {
   const t = (tag || '').toLowerCase();
   if (t.includes('咖啡') || t.includes('cafe'))            return 'cafe-outline';
@@ -61,14 +69,12 @@ function getMoodIcon(tag = '', mood = '') {
   return MOOD[mood] || 'location-outline';
 }
 
-// loading 動畫圖
 const LOADING_FRAMES = [
   require('../../../assets/loading1.png'),
   require('../../../assets/loading2.png'),
   require('../../../assets/loading3.png'),
 ];
 
-// ── 生成中輪播提示 ─────────────────────────────────────────────────────────────
 const LOADING_MSGS = [
   '正在取得你的位置…',
   '搜尋附近真實店家…',
@@ -76,7 +82,6 @@ const LOADING_MSGS = [
   '確認路線距離…',
 ];
 
-// ── 計算行程總時長（分） ────────────────────────────────────────────────────────
 function calcTotalMin(items = []) {
   if (!items.length) return 0;
   const stay = items.reduce((acc, it) => acc + (parseInt(it.dur) || 45), 0);
@@ -91,11 +96,8 @@ function fmtDuration(min) {
 }
 
 const Stack = createNativeStackNavigator();
-
-// ── 模組層級快取（跨 tab 切換存活，App 重啟才清除）─────────────────────────────
 let _tripCache = null;
 
-// ── 依現在時間重算行程時間欄位 ────────────────────────────────────────────────
 function applyCurrentTimes(trip) {
   if (!trip?.items?.length) return trip;
   const now = new Date();
@@ -126,9 +128,10 @@ function TripMain({ route }) {
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { isLoggedIn } = useAuth();
+  
   const vibeKey = route?.params?.vibeKey || 'cafe';
-  const refreshKey = route?.params?.refreshKey;
-  const vibeMeta = VIBES.find(v => v.key === vibeKey) || VIBES[0];
+  const rawVibeIndex = VIBES.findIndex(v => v.key === vibeKey);
+  const safeVibeIndex = Math.max(0, rawVibeIndex) % VIBE_FRAMES.length;
 
   const [trip, setTrip] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -138,8 +141,15 @@ function TripMain({ route }) {
   const [saving, setSaving] = useState(false);
   const [loadingMsgIdx, setLoadingMsgIdx] = useState(0);
   const [loadingFrame, setLoadingFrame] = useState(0);
+  const [titleFrameIdx, setTitleFrameIdx] = useState(0);
+
   const loadingIntervalRef = useRef(null);
   const frameIntervalRef = useRef(null);
+
+  useEffect(() => {
+    const t = setInterval(() => setTitleFrameIdx(p => (p === 0 ? 1 : 0)), 450);
+    return () => clearInterval(t);
+  }, []);
 
   const fetchTrip = async (exclude = []) => {
     setLoading(true);
@@ -173,7 +183,6 @@ function TripMain({ route }) {
 
   useEffect(() => {
     const hasExplicit = !!(route?.params?.vibeKey || route?.params?.refreshKey);
-
     if (!hasExplicit) {
       if (_tripCache) {
         setTrip(_tripCache);
@@ -181,9 +190,7 @@ function TripMain({ route }) {
         return;
       }
     }
-
     setSaved(false);
-
     const isShake = !!route?.params?.refreshKey;
     if (isShake && _tripCache?.id) {
       setExcludeIds(prev => {
@@ -195,7 +202,6 @@ function TripMain({ route }) {
       setExcludeIds([]);
       fetchTrip([]);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [route?.params?.vibeKey, route?.params?.refreshKey]);
 
   const handleSaveTrip = useCallback(async () => {
@@ -226,13 +232,11 @@ function TripMain({ route }) {
       setSaved(true);
     } catch (e) {
       Alert.alert('儲存失敗', '請稍後再試');
-      console.warn('[TripScreen] 儲存行程失敗', e.message);
     } finally {
       setSaving(false);
     }
   }, [trip, isLoggedIn]);
 
-  // 載入提示輪播（文字）
   useEffect(() => {
     if (loading) {
       setLoadingMsgIdx(0);
@@ -243,15 +247,9 @@ function TripMain({ route }) {
       clearInterval(loadingIntervalRef.current);
       loadingIntervalRef.current = null;
     }
-    return () => {
-      if (loadingIntervalRef.current) {
-        clearInterval(loadingIntervalRef.current);
-        loadingIntervalRef.current = null;
-      }
-    };
+    return () => clearInterval(loadingIntervalRef.current);
   }, [loading]);
 
-  // 載入動畫圖片輪播（loading1/2/3）
   useEffect(() => {
     if (loading) {
       setLoadingFrame(0);
@@ -262,49 +260,38 @@ function TripMain({ route }) {
       clearInterval(frameIntervalRef.current);
       frameIntervalRef.current = null;
     }
-    return () => {
-      if (frameIntervalRef.current) {
-        clearInterval(frameIntervalRef.current);
-        frameIntervalRef.current = null;
-      }
-    };
+    return () => clearInterval(frameIntervalRef.current);
   }, [loading]);
 
-  // ── 生成失敗：重試畫面（卡通膠囊版） ────────────────────────────────────────
   if (loadError) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.centerBody}>
-          <View style={[styles.errPill, { transform: [{ rotate: '-1.5deg' }] }]}>
-            <Ionicons name="alert-circle-outline" size={26} color={PAL.black} />
-            <Text style={styles.errTitle}>找不到合適行程</Text>
+          <View style={styles.errPillWrapper}>
+            <View style={[styles.offsetShadow, { backgroundColor: PAL.purple }]} />
+            <View style={[styles.errPill, { transform: [{ rotate: '-1.5deg' }] }]}>
+              <Ionicons name="alert-circle" size={26} color={PAL.black} />
+              <Text style={styles.errTitle}>找不到合適行程</Text>
+            </View>
           </View>
-          <Text style={styles.errSub}>
-            網路逾時或服務暫時忙碌{'\n'}請稍後再試一次
-          </Text>
-          <TouchableOpacity
-            style={[styles.retryPill, { transform: [{ rotate: '1.5deg' }] }]}
-            onPress={() => fetchTrip(excludeIds)}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="refresh" size={16} color={PAL.white} />
-            <Text style={styles.retryText}>重新探索</Text>
-          </TouchableOpacity>
+          <Text style={styles.errSub}>網路逾時或服務暫時忙碌{'\n'}請稍後再試一次</Text>
+          <View style={styles.retryPillWrapper}>
+            <View style={[styles.offsetShadow, { backgroundColor: PAL.pink }]} />
+            <TouchableOpacity style={[styles.retryPill, { transform: [{ rotate: '1.5deg' }] }]} onPress={() => fetchTrip(excludeIds)}>
+              <Ionicons name="refresh" size={16} color={PAL.white} />
+              <Text style={styles.retryText}>重新探索</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
     );
   }
 
-  // ── 載入中：loading1/2/3 圖片輪播 ──────────────────────────────────────────
   if (loading || !trip) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.centerBody}>
-          <Image
-            source={LOADING_FRAMES[loadingFrame]}
-            style={styles.loadingImg}
-            resizeMode="contain"
-          />
+          <Image source={LOADING_FRAMES[loadingFrame]} style={styles.loadingImg} resizeMode="contain" />
           <Text style={styles.loadingTitle}>探索中</Text>
           <Text style={styles.loadingText}>{LOADING_MSGS[loadingMsgIdx]}</Text>
           <Text style={styles.loadingHint}>通常約需 5–15 秒</Text>
@@ -313,41 +300,45 @@ function TripMain({ route }) {
     );
   }
 
-  // ── 主畫面：卡通膠囊條 ────────────────────────────────────────────────────
   const totalMin = calcTotalMin(trip.items);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* 頂部：左 vibe 標籤 ＋ 右收藏鈕 */}
-      <View style={styles.topBar}>
-        <Text style={styles.topMeta}>
-          {vibeMeta.en.toUpperCase()} · {trip.items.length} STOPS · {fmtDuration(totalMin)}
-        </Text>
-        <TouchableOpacity
-          style={[styles.saveCorner, saved && { backgroundColor: PAL.black }]}
-          activeOpacity={0.75}
-          onPress={saved || saving ? undefined : handleSaveTrip}
-          disabled={saving}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          {saving
-            ? <ActivityIndicator size="small" color={PAL.black} />
-            : <Ionicons
-                name={saved ? 'bookmark' : 'bookmark-outline'}
-                size={18}
-                color={saved ? PAL.white : PAL.black}
-              />
-          }
-        </TouchableOpacity>
-      </View>
+      
+      {/* ── 頂部區塊 ── */}
+      <View style={styles.headerWrapper}>
+        <View style={styles.titleContainer}>
+          
+          <View style={styles.animalColumn}>
+            <Image 
+              source={VIBE_FRAMES[safeVibeIndex][titleFrameIdx]} 
+              style={styles.titleImage} 
+              resizeMode="contain" 
+              fadeDuration={0}
+            />
+            <Text style={styles.durationText}>
+              {fmtDuration(totalMin)}
+            </Text>
+          </View>
 
-      {/* 細白線 ＋ 行程標題（單行小字） */}
-      <View style={styles.titleLineWrap}>
-        <View style={styles.titleLine} />
-        <Text style={styles.titleLineText} numberOfLines={1}>
-          {trip.title}
-        </Text>
-        <View style={styles.titleLine} />
+          <TouchableOpacity
+            style={styles.saveBtn}
+            activeOpacity={0.75}
+            onPress={saved || saving ? undefined : handleSaveTrip}
+            disabled={saving}
+            hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color={PAL.white} />
+            ) : (
+              <Ionicons
+                name="bookmark"
+                size={24} // 書籤尺寸縮小
+                color={saved ? PAL.blue : PAL.white}
+              />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
@@ -355,337 +346,234 @@ function TripMain({ route }) {
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 120 }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* 停靠點膠囊們 — 字少圖多 */}
+        {/* ── 停靠點膠囊 (右 > 左 > 右 > 左) ── */}
         {trip.items.map((item, i) => {
-          const bg  = STOP_COLORS[i % STOP_COLORS.length];
-          const ink = inkFor(bg);
+          const isRight = i % 2 === 0; // 0, 2, 4 -> 靠右
+          let theme;
+          
+          if (isRight) {
+            // 靠右的膠囊：粉藍交替 (0: 粉, 2: 藍, 4: 粉)
+            const isPink = (i / 2) % 2 === 0;
+            theme = {
+              bg: isPink ? PAL.pink : PAL.blue,
+              shadow: isPink ? PAL.blue : PAL.pink, // 陰影是對比色
+              align: 'flex-end',
+            };
+          } else {
+            // 靠左的膠囊：全白 (白底紫影)
+            theme = {
+              bg: PAL.white,
+              shadow: PAL.purple,
+              align: 'flex-start',
+            };
+          }
+
+          const ink = inkFor(theme.bg);
           const sub = ink === PAL.white ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.62)';
-          const tilt = (i % 2 === 0 ? 0.5 : -0.5) + 'deg';
+
           return (
-            <View
-              key={i}
-              style={[
-                styles.stopPill,
-                { backgroundColor: bg, transform: [{ rotate: tilt }] },
-              ]}
-            >
-              {/* 左側：大圖位（先放 Ionicons，之後可換 Open Doodles / 自繪 PNG） */}
-              <View style={[styles.stopIconCircle, { borderColor: ink }]}>
-                <Ionicons
-                  name={getMoodIcon(item.tag, item.mood)}
-                  size={30}
-                  color={ink}
-                />
-              </View>
+            <View key={i} style={[styles.pillWrapper, { alignSelf: theme.align }]}>
+              {/* 實體色塊陰影 */}
+              <View style={[styles.pillShadow, { backgroundColor: theme.shadow }]} />
 
-              {/* 中間：活動名（大）＋ 時間（小） */}
-              <View style={styles.stopMiddle}>
-                <Text style={[styles.stopName, { color: ink }]} numberOfLines={1}>
-                  {item.activity}
-                </Text>
-                <Text style={[styles.stopTime, { color: sub }]}>
-                  {item.time} · {item.dur}
+              <View style={[styles.stopPill, { backgroundColor: theme.bg }]}>
+                <View style={styles.stopIconCircle}>
+                  <Ionicons name={getMoodIcon(item.tag, item.mood)} size={22} color={ink} />
+                </View>
+
+                <View style={styles.stopMiddle}>
+                  <Text style={[styles.stopName, { color: ink }]} numberOfLines={1}>
+                    {item.activity}
+                  </Text>
+                  <Text style={[styles.stopTime, { color: sub }]}>
+                    {item.time} · {item.dur}
+                  </Text>
+                </View>
+
+                <Text style={[styles.stopNum, { color: ink, opacity: ink === PAL.white ? 0.3 : 0.15 }]}>
+                  {String(i + 1).padStart(2, '0')}
                 </Text>
               </View>
-
-              {/* 右側：編號 */}
-              <Text style={[styles.stopNum, { color: ink, opacity: 0.85 }]}>
-                {String(i + 1).padStart(2, '0')}
-              </Text>
             </View>
           );
         })}
       </ScrollView>
 
-      {/* 底部動作列：換一批 + 開始導覽 */}
+      {/* ── 底部動作列 ── */}
       <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom + 90, 100) }]}>
-        {/* 換一批（搖一搖） */}
-        <TouchableOpacity
-          style={styles.shakePill}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('Shake', { vibeKey })}
-        >
-          <ShakeIcon color={PAL.black} />
-          <Text style={styles.shakeText}>換一批</Text>
-        </TouchableOpacity>
+        <View style={styles.btnWrapper}>
+          <View style={[styles.offsetShadow, { backgroundColor: PAL.blue }]} />
+          <TouchableOpacity
+            style={styles.shakePill}
+            activeOpacity={0.8}
+            onPress={() => navigation.navigate('Shake', { vibeKey })}
+          >
+            <Ionicons name="refresh" size={20} color={PAL.black} style={{ marginRight: 6 }} />
+            <Text style={styles.shakeText}>換一批</Text>
+          </TouchableOpacity>
+        </View>
 
-        {/* 開始導覽 */}
-        <TouchableOpacity
-          style={styles.actionPrimary}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('AR', {
-            mode: 'trip',
-            tripTitle: trip.title,
-            tripItems: trip.items.map(item => ({
-              name:  item.activity,
-              desc:  item.desc  ?? '',
-              time:  item.time  ?? '',
-              dur:   item.dur   ?? '',
-              mood:  item.mood  ?? '📍',
-              tag:   item.tag   ?? '',
-            })),
-          })}
-        >
-          <Text style={styles.actionPrimaryText}>開始導覽</Text>
-          <Ionicons name="arrow-forward" size={16} color={PAL.white} />
-        </TouchableOpacity>
+        <View style={[styles.btnWrapper, { flex: 1 }]}>
+          <View style={[styles.offsetShadow, { backgroundColor: PAL.pink }]} />
+          <TouchableOpacity
+            style={styles.actionPrimary}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('AR', {
+              mode: 'trip',
+              tripTitle: trip.title,
+              tripItems: trip.items.map(item => ({
+                name:  item.activity,
+                desc:  item.desc  ?? '',
+                time:  item.time  ?? '',
+                dur:   item.dur   ?? '',
+                mood:  item.mood  ?? '📍',
+                tag:   item.tag   ?? '',
+              })),
+            })}
+          >
+            <Text style={styles.actionPrimaryText}>開始導覽</Text>
+            <Ionicons name="arrow-forward" size={18} color={PAL.white} />
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
 }
 
-// 搖一搖小圖
-function ShakeIcon({ color }) {
-  const c = color ?? PAL.black;
-  return (
-    <Svg width={18} height={18} viewBox="0 0 24 24" fill="none">
-      <Path d="M7 2h8a2 2 0 012 2v16a2 2 0 01-2 2H7a2 2 0 01-2-2V4a2 2 0 012-2z"
-        stroke={c} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
-      <Path d="M12 17.8a.6.6 0 100 1.2.6.6 0 000-1.2z" fill={c} />
-      <Path d="M19 9c1 1.5 1 3.5 0 5" stroke={c} strokeWidth={1.6} strokeLinecap="round" />
-      <Path d="M21.5 7c1.8 2.8 1.8 6.2 0 9" stroke={c} strokeWidth={1.4} strokeLinecap="round" opacity="0.55" />
-    </Svg>
-  );
-}
-
-// ── 樣式（卡通膠囊 + 思源黑體） ──────────────────────────────────────────────
-const BORDER = 2.5;
+// ── 樣式 ──────────────────────────────────────────────────────────────
 const PILL_RADIUS = 999;
-const HARD_SHADOW = {
-  shadowColor: PAL.black,
-  shadowOffset: { width: 3, height: 4 },
-  shadowOpacity: 1,
-  shadowRadius: 0,
-  elevation: 0,
-};
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: PAL.yellow },
 
-  // ── 頂部狀態條 ────────────────────────────────────────────────────────
-  topBar: {
-    paddingHorizontal: 24,
+  /* ── 頂部區塊 ── */
+  headerWrapper: {
     paddingTop: 8,
-    paddingBottom: 6,
-    alignItems: 'center',
-  },
-  topMeta: {
-    fontFamily: Fonts.sansBold,
-    fontSize: 10,
-    letterSpacing: 2.5,
-    color: PAL.black,
-  },
-
-  // ── 中央通用排版（loading / error） ─────────────────────────────────────
-  centerBody: {
-    flex: 1,
+    paddingBottom: 4, 
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 14,
-    paddingHorizontal: 32,
+    width: '100%',
   },
-  loadingImg: { width: 120, height: 120, marginBottom: 4 },
-  loadingTitle: {
-    fontFamily: Fonts.sansBlack,
-    fontSize: 22,
-    color: PAL.black,
-    letterSpacing: 1,
-  },
-  loadingText: {
-    fontFamily: Fonts.sansMed,
-    fontSize: 14,
-    color: PAL.black,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  loadingHint: {
-    fontFamily: Fonts.sans,
-    fontSize: 11,
-    color: 'rgba(0,0,0,0.55)',
-    textAlign: 'center',
-    letterSpacing: 1.2,
-    marginTop: 4,
-  },
-
-  // ── 錯誤畫面 ─────────────────────────────────────────────────────────
-  errPill: {
+  titleContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 22,
-    paddingVertical: 14,
-    backgroundColor: PAL.white,
-    borderRadius: PILL_RADIUS,
-    borderWidth: BORDER,
-    borderColor: PAL.black,
-    ...HARD_SHADOW,
+    alignItems: 'flex-end', 
+    transform: [{ translateX: 10 }], // 微調偏移維持小動物視覺置中
   },
-  errTitle: { fontFamily: Fonts.sansBlack, fontSize: 16, color: PAL.black },
-  errSub: {
-    fontFamily: Fonts.sansMed,
-    fontSize: 13,
-    color: PAL.black,
-    textAlign: 'center',
-    lineHeight: 20,
+  animalColumn: {
+    alignItems: 'center', 
   },
-  retryPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 26,
-    paddingVertical: 14,
-    backgroundColor: PAL.blue,
-    borderRadius: PILL_RADIUS,
-    borderWidth: BORDER,
-    borderColor: PAL.black,
-    ...HARD_SHADOW,
-    marginTop: 6,
+  titleImage: {
+    height: 130, 
+    width: 160,  
   },
-  retryText: {
+  durationText: {
     fontFamily: Fonts.sansBold,
-    fontSize: 14,
-    color: PAL.white,
-    letterSpacing: 1,
+    fontSize: 12,
+    color: PAL.black,
+    opacity: 0.55,
+    marginTop: -8, 
+    letterSpacing: 2,
+  },
+  saveBtn: {
+    marginLeft: -25, 
+    marginBottom: 42, // ✅ 往上提，剛好避開下方文字，跟小動物底部完美切齊
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
-  // ── 列表 ─────────────────────────────────────────────────────────────
+  /* ── 中央 Loading/Error ── */
+  centerBody: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 32 },
+  loadingImg: { width: 120, height: 120, marginBottom: 4 },
+  loadingTitle: { fontFamily: Fonts.sansBlack, fontSize: 22, color: PAL.black, letterSpacing: 1 },
+  loadingText: { fontFamily: Fonts.sansMed, fontSize: 14, color: PAL.black, textAlign: 'center', lineHeight: 22 },
+  loadingHint: { fontFamily: Fonts.sans, fontSize: 11, color: 'rgba(0,0,0,0.55)', textAlign: 'center', letterSpacing: 1.2, marginTop: 4 },
+
+  errPillWrapper: { position: 'relative' },
+  errPill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 22, paddingVertical: 14, backgroundColor: PAL.white, borderRadius: PILL_RADIUS },
+  errTitle: { fontFamily: Fonts.sansBlack, fontSize: 16, color: PAL.black },
+  errSub: { fontFamily: Fonts.sansMed, fontSize: 13, color: PAL.black, textAlign: 'center', lineHeight: 20 },
+  retryPillWrapper: { position: 'relative', marginTop: 6 },
+  retryPill: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 26, paddingVertical: 14, backgroundColor: PAL.blue, borderRadius: PILL_RADIUS },
+  retryText: { fontFamily: Fonts.sansBold, fontSize: 14, color: PAL.white, letterSpacing: 1 },
+
+  /* ── 列表 ── */
   scroll: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: 18,
-    paddingTop: 8,
-    gap: 14,
+    paddingHorizontal: 20,
+    paddingTop: 12, 
+    gap: 40, // 間距加到最大，為了塞入超大偏移陰影
   },
 
-  // ── 標題粉膠囊 ───────────────────────────────────────────────────────
-  headerPill: {
-    backgroundColor: PAL.pink,
+  /* ── 停靠點膠囊 (實體色塊硬陰影) ── */
+  pillWrapper: {
+    width: '85%', // 留出左右交錯的空間
+    position: 'relative',
+  },
+  pillShadow: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
     borderRadius: PILL_RADIUS,
-    borderWidth: BORDER,
-    borderColor: PAL.black,
-    paddingHorizontal: 26,
-    paddingVertical: 18,
-    alignItems: 'center',
-    ...HARD_SHADOW,
+    top: 16,  
+    left: 16, 
   },
-  headerTitle: {
-    fontFamily: Fonts.sansBlack,
-    fontSize: 20,
-    color: PAL.black,
-    textAlign: 'center',
-    lineHeight: 26,
-    letterSpacing: 0.5,
-  },
-  headerSub: {
-    fontFamily: Fonts.sansMed,
-    fontSize: 12,
-    color: 'rgba(0,0,0,0.7)',
-    textAlign: 'center',
-    marginTop: 4,
-    lineHeight: 18,
-  },
-
-  // ── 停靠點膠囊 ───────────────────────────────────────────────────────
   stopPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
     borderRadius: PILL_RADIUS,
-    borderWidth: BORDER,
-    borderColor: PAL.black,
-    paddingLeft: 10,
-    paddingRight: 18,
-    paddingVertical: 12,
-    minHeight: 78,
-    ...HARD_SHADOW,
+    paddingLeft: 12,
+    paddingRight: 16,
+    paddingVertical: 14,
+    minHeight: 80,
   },
-  stopBadge: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    borderWidth: BORDER,
+  stopIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 14,
+    backgroundColor: 'transparent',
   },
-  stopBadgeText: {
-    fontFamily: Fonts.sansBlack,
-    fontSize: 18,
-    letterSpacing: -0.5,
-  },
-  stopMiddle: { flex: 1, minWidth: 0 },
-  stopTime: {
-    fontFamily: Fonts.sansMed,
-    fontSize: 10,
-    letterSpacing: 1,
-    marginBottom: 2,
-  },
-  stopName: {
-    fontFamily: Fonts.sansBlack,
-    fontSize: 16,
-    lineHeight: 22,
-    letterSpacing: 0.2,
-  },
-  stopDesc: {
-    fontFamily: Fonts.sans,
-    fontSize: 11,
-    lineHeight: 16,
-    marginTop: 1,
-  },
-  stopRight: {
-    alignItems: 'flex-end',
-    gap: 4,
-    maxWidth: 80,
-  },
-  stopTag: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: PILL_RADIUS,
-    borderWidth: 1.5,
-  },
-  stopTagText: {
-    fontFamily: Fonts.sansBold,
-    fontSize: 10,
-    letterSpacing: 0.5,
-  },
-  stopDist: {
-    fontFamily: Fonts.sansMed,
-    fontSize: 10,
-    letterSpacing: 0.5,
-  },
+  stopMiddle: { flex: 1 },
+  stopName: { fontFamily: Fonts.sansBlack, fontSize: 16, letterSpacing: 0.5 },
+  stopTime: { fontFamily: Fonts.sansMed, fontSize: 12, marginTop: 4 },
+  stopNum: { fontFamily: Fonts.sansBlack, fontSize: 32, letterSpacing: -1, marginLeft: 8 },
 
-  // ── 結尾 ─────────────────────────────────────────────────────────────
-  endPill: {
-    alignItems: 'center',
-    paddingVertical: 14,
-    marginTop: 4,
-  },
-  endText: {
-    fontFamily: Fonts.sansBold,
-    fontSize: 11,
-    color: 'rgba(0,0,0,0.55)',
-    letterSpacing: 3,
-  },
-
-  // ── 底部動作列 ───────────────────────────────────────────────────────
+  /* ── 底部動作列 ── */
   bottomBar: {
     position: 'absolute',
     left: 0, right: 0, bottom: 0,
     flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 18,
-    paddingTop: 10,
+    gap: 16,
+    paddingHorizontal: 20,
+    paddingTop: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionRound: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: PAL.white,
-    borderWidth: BORDER,
-    borderColor: PAL.black,
+  btnWrapper: {
+    position: 'relative',
+  },
+  offsetShadow: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    borderRadius: PILL_RADIUS,
+    top: 8,
+    left: 8,
+  },
+  shakePill: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    ...HARD_SHADOW,
+    backgroundColor: PAL.white,
+    borderRadius: PILL_RADIUS,
+    paddingHorizontal: 20,
+    height: 52,
+  },
+  shakeText: {
+    fontFamily: Fonts.sansBlack,
+    fontSize: 15,
+    color: PAL.black,
   },
   actionPrimary: {
     flex: 1,
@@ -693,17 +581,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    height: 48,
+    height: 52,
     borderRadius: PILL_RADIUS,
     backgroundColor: PAL.blue,
-    borderWidth: BORDER,
-    borderColor: PAL.black,
-    ...HARD_SHADOW,
   },
   actionPrimaryText: {
     fontFamily: Fonts.sansBlack,
-    fontSize: 15,
+    fontSize: 16,
     color: PAL.white,
-    letterSpacing: 2,
+    letterSpacing: 1,
   },
 });
