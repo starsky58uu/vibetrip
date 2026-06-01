@@ -12,7 +12,6 @@ import ProfileScreen from '../screens/Profile/ProfileScreen';
 
 const Tab = createBottomTabNavigator();
 
-// Tab 順序固定，色順序＝跳色 palette
 const TABS = [
   { name: 'Home',    zh: '主頁', icon: 'home-outline',   iconActive: 'home'   },
   { name: 'Trip',    zh: '行程', icon: 'time-outline',   iconActive: 'time'   },
@@ -24,17 +23,14 @@ function TabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
 
-  // 每 tab 對應的跳色（朱 / 山吹 / 紺 / 抹茶）
   const TAB_COLORS = [colors.cRed, colors.cYellow, colors.cBlue, colors.cGreen];
 
   return (
     <View style={[
       styles.wrap,
       {
-        backgroundColor: '#FFFFFF',
-        borderTopColor: '#000000',
-        borderTopWidth: 2,
-        paddingBottom: Math.max(insets.bottom - 4, 4),
+        // 動態計算底部距離，避開 iPhone 底部的橫條
+        bottom: Math.max(insets.bottom + 10, 24),
       },
     ]}>
       <View style={styles.row}>
@@ -47,7 +43,6 @@ function TabBar({ state, navigation }) {
             if (route.name === 'Profile') {
               navigation.navigate('Profile', { screen: 'ProfileMain' });
             } else if (route.name === 'Trip') {
-              // 不帶 params，僅聚焦 Tab，不清空 TripMain 已生成的行程
               navigation.navigate('Trip');
             } else {
               navigation.navigate(route.name);
@@ -61,13 +56,13 @@ function TabBar({ state, navigation }) {
               style={styles.item}
               activeOpacity={0.7}
             >
-              {/* 上方短色線 — 僅當前 tab 顯示 */}
+              {/* 上方短色線改為在 icon 正上方微調 */}
               {focused && (
                 <View style={[styles.indicator, { backgroundColor: c }]} />
               )}
               <Ionicons
                 name={focused ? tab.iconActive : tab.icon}
-                size={20}
+                size={22}
                 color={focused ? colors.ink : colors.ink4}
               />
               <Text style={[
@@ -103,28 +98,45 @@ export default function TabNavigator() {
 
 const styles = StyleSheet.create({
   wrap: {
-    borderTopWidth: 1,
-    paddingTop: 4,
+    // 讓導覽列變成懸浮的白色膠囊
+    position: 'absolute',
+    alignSelf: 'center',
+    width: '88%',
+    height: 64,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 32,
+    borderWidth: 2,
+    borderColor: '#000000', // 加上黑邊呼應整體像素風格
+    // 陰影設定
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 8,
   },
   row: {
+    flex: 1,
     flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
   },
   item: {
     flex: 1,
-    paddingVertical: 10,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
+    gap: 2,
     position: 'relative',
   },
   indicator: {
     position: 'absolute',
-    top: 0,
-    width: 24,
-    height: 2,
+    top: 6, // 往下移一點才不會切到圓角
+    width: 20,
+    height: 3,
+    borderRadius: 1.5,
   },
   label: {
-    fontSize: 11,
+    fontSize: 10,
     letterSpacing: 0.5,
   },
 });
