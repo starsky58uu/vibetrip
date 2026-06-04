@@ -4,13 +4,23 @@ import {
   StyleSheet, View, Text, ScrollView, Image, TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { themeColors, Fonts } from '../../../constants/theme';
+import { Fonts } from '../../../constants/theme';
+import { usePAL } from '../../../context/DimContext';
+
+const PAL = {
+  yellow: '#E2E146',
+  pink:   '#FF6FA8',
+  blue:   '#2E45B0',
+  black:  '#000000',
+  white:  '#FFFFFF',
+};
 
 export default function AddSpotModal({
   visible, onClose, isLoggedIn,
   editingNote, setEditingNote,
   editingImage, pickImage, saveAndCloseSpot,
 }) {
+  const C = usePAL();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
@@ -19,49 +29,58 @@ export default function AddSpotModal({
         pointerEvents="box-none"
       >
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <View style={styles.sheet}>
+        <View style={[styles.sheet, { backgroundColor: C.white }]}>
           <View style={styles.handle} />
 
           <View style={styles.header}>
-            <Text style={styles.title}>
-              {isLoggedIn ? '記錄並準備分享 ✍️' : '本機私密記錄 ✍️'}
+            <Text style={[styles.title, { color: C.black }]}>
+              {isLoggedIn ? '記錄並分享' : '本機私密記錄'}
             </Text>
-            <TouchableOpacity onPress={onClose}>
-              <Ionicons name="close-circle" size={28} color={themeColors.textSub} />
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close" size={24} color={C.black} />
             </TouchableOpacity>
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            {/* 照片區 */}
-            <TouchableOpacity style={styles.photoBox} onPress={pickImage} activeOpacity={0.8}>
+            {/* 照片區 — 黃底膠囊風 */}
+            <TouchableOpacity
+              style={[styles.photoBox, { backgroundColor: C.yellow }]}
+              onPress={pickImage} activeOpacity={0.85}
+            >
               {editingImage ? (
                 <Image source={{ uri: editingImage }} style={styles.photo} />
               ) : (
                 <>
-                  <Ionicons name="image-outline" size={40} color={themeColors.textSub} />
-                  <Text style={styles.photoHint}>點擊上傳照片</Text>
+                  <Ionicons name="image-outline" size={36} color={C.black} />
+                  <Text style={[styles.photoHint, { color: C.black }]}>點擊上傳照片</Text>
                 </>
               )}
             </TouchableOpacity>
 
             {/* 備註輸入 */}
-            <TextInput
-              style={styles.input}
-              placeholder="寫下這裡的故事..."
-              placeholderTextColor={themeColors.textSub}
-              multiline
-              value={editingNote}
-              onChangeText={setEditingNote}
-            />
+            <View style={styles.inputWrap}>
+              <Text style={styles.inputLabel}>記事</Text>
+              <TextInput
+                style={[styles.input, { backgroundColor: C.white, color: C.black }]}
+                placeholder="寫下這裡的故事…"
+                placeholderTextColor="rgba(0,0,0,0.32)"
+                multiline
+                value={editingNote}
+                onChangeText={setEditingNote}
+              />
+            </View>
 
             {/* 儲存按鈕 */}
-            <TouchableOpacity style={styles.saveBtn} onPress={saveAndCloseSpot} activeOpacity={0.8}>
+            <TouchableOpacity
+              style={[styles.saveBtn, { backgroundColor: C.blue }]}
+              onPress={saveAndCloseSpot} activeOpacity={0.85}
+            >
               <Ionicons
-                name={isLoggedIn ? 'cloud-upload' : 'save'}
-                size={20}
-                color={themeColors.textMain}
+                name={isLoggedIn ? 'cloud-upload-outline' : 'save-outline'}
+                size={18}
+                color={C.white}
               />
-              <Text style={styles.saveBtnText}>
+              <Text style={[styles.saveBtnText, { color: C.white }]}>
                 {isLoggedIn ? '同步至雲端' : '儲存至手機'}
               </Text>
             </TouchableOpacity>
@@ -73,52 +92,56 @@ export default function AddSpotModal({
 }
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1, justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
+  overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet: {
-    backgroundColor: themeColors.background,
-    borderTopLeftRadius: 30, borderTopRightRadius: 30,
-    paddingHorizontal: 25, paddingBottom: 40, paddingTop: 15,
-    maxHeight: '80%',
-    borderTopWidth: 2, borderLeftWidth: 2, borderRightWidth: 2,
-    borderColor: themeColors.border,
+    backgroundColor: PAL.white,
+    borderTopLeftRadius: 28, borderTopRightRadius: 28,
+    paddingHorizontal: 22, paddingBottom: 40, paddingTop: 12,
+    maxHeight: '85%',
   },
   handle: {
-    width: 40, height: 5, borderRadius: 3,
-    backgroundColor: themeColors.textSub,
-    alignSelf: 'center', marginBottom: 15,
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+    alignSelf: 'center', marginBottom: 14,
   },
   header: {
     flexDirection: 'row', justifyContent: 'space-between',
-    alignItems: 'center', marginBottom: 20,
+    alignItems: 'center', marginBottom: 16,
   },
-  title: { fontFamily: Fonts.serifBold, fontSize: 18, color: themeColors.textMain },
+  title: { fontFamily: Fonts.sansBlack, fontSize: 17, color: PAL.black },
 
+  // 照片膠囊
   photoBox: {
     width: '100%', height: 180,
-    backgroundColor: 'rgba(0,0,0,0.2)', borderRadius: 20,
+    backgroundColor: PAL.yellow,
+    borderRadius: 22,
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 20, borderWidth: 2, borderColor: themeColors.border,
+    marginBottom: 16,
     overflow: 'hidden',
+    gap: 6,
   },
   photo:     { width: '100%', height: '100%', resizeMode: 'cover' },
-  photoHint: { fontFamily: Fonts.serif, fontSize: 12, color: themeColors.textSub, marginTop: 8 },
+  photoHint: { fontFamily: Fonts.sansBold, fontSize: 12, color: PAL.black, letterSpacing: 1 },
 
+  // 輸入膠囊
+  inputWrap: { marginBottom: 16 },
+  inputLabel: {
+    fontFamily: Fonts.sansBlack, fontSize: 11, color: 'rgba(0,0,0,0.5)',
+    letterSpacing: 2, marginBottom: 8, marginLeft: 4,
+  },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    height: 120, borderRadius: 20, padding: 16,
-    fontSize: 14, fontFamily: Fonts.serif,
-    color: themeColors.textMain, textAlignVertical: 'top',
-    borderWidth: 2, borderColor: themeColors.border, marginBottom: 20,
+    backgroundColor: PAL.white,
+    height: 110, borderRadius: 20, padding: 14,
+    fontSize: 14, fontFamily: Fonts.sansMed,
+    color: PAL.black, textAlignVertical: 'top',
+    borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.12)',
   },
 
+  // 儲存按鈕
   saveBtn: {
-    backgroundColor: themeColors.accentMain,
+    backgroundColor: PAL.blue,
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
-    gap: 8, paddingVertical: 16, borderRadius: 20,
-    borderWidth: 2, borderColor: themeColors.border,
+    gap: 8, paddingVertical: 14, borderRadius: 999,
   },
-  saveBtnText: { fontFamily: Fonts.serifBold, color: themeColors.textMain, fontSize: 16 },
+  saveBtnText: { fontFamily: Fonts.sansBlack, color: PAL.white, fontSize: 15, letterSpacing: 1 },
 });

@@ -12,9 +12,45 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Location from 'expo-location';
 import { apiPost, apiUpload } from '../../services/apiClient';
 
-import { T, Fonts } from '../../constants/theme';
+import { Fonts as _Fonts } from '../../constants/theme';
 import { CATEGORY_MAP } from './constants/arData';
 import { fmtSec, getDistance } from './utils/helpers';
+import { usePAL } from '../../context/DimContext';
+
+// 卡通配色（與其他頁面一致）
+const PAL = {
+  yellow: '#E2E146',
+  pink:   '#FF6FA8',
+  blue:   '#2E45B0',
+  black:  '#000000',
+  white:  '#FFFFFF',
+};
+
+// 用 PAL 對映 T；改成函式，元件內依當前色票（亮 / 低明度）即時計算
+const makeT = (P) => ({
+  paper:  P.white,    paper2: P.yellow,
+  card:   P.white,
+  ink:    P.black,    ink2: 'rgba(0,0,0,0.7)',
+  ink3:   'rgba(0,0,0,0.5)', ink4: 'rgba(0,0,0,0.35)',
+  line:   'rgba(0,0,0,0.12)',
+  accent: P.blue,
+  cRed:   P.pink, cYellow: P.yellow, cBlue: P.blue,
+  cGreen: P.blue, cPink: P.pink, cCyan: P.blue,
+  indigo: P.blue, stamp: P.pink, tea: P.blue,
+});
+// 模組層 fallback（給檔內外面的少數參考使用，元件內會用動態 T 覆蓋）
+const T = makeT(PAL);
+
+// 把所有 serif/latin/mono 字體統一改為 sans 系（思源黑體）
+const Fonts = {
+  ..._Fonts,
+  serif:        _Fonts.sans,
+  serifBold:    _Fonts.sansBold,
+  latin:        _Fonts.sans,
+  latinMed:     _Fonts.sansBold,
+  latinItalic:  _Fonts.sansMed,
+  mono:         _Fonts.sansBold,
+};
 import { useArLogic } from './hooks/useArLogic';
 
 // ── tag / mood → Ionicons 圖示對映（與 TripScreen 保持一致）──────────────────
@@ -49,6 +85,11 @@ function getMoodIcon(tag = '', mood = '') {
 export default function ArScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const cameraRef = useRef(null);
+  // 動態色票 — 隨低明度模式即時切換
+  // eslint-disable-next-line no-unused-vars
+  const C = usePAL();
+  const T = React.useMemo(() => makeT(C), [C]);
+  const styles = React.useMemo(() => makeStyles(T), [T]);
   const [isRecording, setIsRecording] = useState(false);
   const [camMode, setCamMode] = useState('picture');
   const [toast, setToast] = useState('');
@@ -748,6 +789,7 @@ export default function ArScreen({ navigation, route }) {
           </TouchableOpacity>
         </KeyboardAvoidingView>
       </Modal>
+
     </View>
   );
 }
@@ -756,7 +798,8 @@ export default function ArScreen({ navigation, route }) {
 const CREAM  = 'rgba(245,239,227,0.93)';
 const CREAM2 = 'rgba(245,239,227,0.82)';
 
-const styles = StyleSheet.create({
+// styles 改成 factory 函式，接受當前 T → 元件內 useMemo 即時建立
+const makeStyles = (T) => StyleSheet.create({
   root: { flex: 1, backgroundColor: '#000' },
 
   permBox: { flex: 1, backgroundColor: T.paper, alignItems: 'center', justifyContent: 'center', gap: 12 },

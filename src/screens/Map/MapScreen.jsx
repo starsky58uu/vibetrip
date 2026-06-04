@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, Platform } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE, PROVIDER_DEFAULT } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,20 +8,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 const MAP_PROVIDER = Platform.OS === 'android' ? PROVIDER_GOOGLE : PROVIDER_DEFAULT;
 
 import { Fonts } from '../../constants/theme';
-import { getMapStyle } from './constants/mapData';
 import { useMapLogic } from './hooks/useMapLogic';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
 import AddSpotModal from './components/AddSpotModal';
-import VibeIcon from '../../components/VibeIcon';
+import { usePAL } from '../../context/DimContext';
+
+// 卡通配色（與其他頁面一致）
+const PAL = {
+  yellow: '#E2E146',
+  pink:   '#FF6FA8',
+  blue:   '#2E45B0',
+  black:  '#000000',
+  white:  '#FFFFFF',
+};
 
 const MapScreen = () => {
   const insets = useSafeAreaInsets();
   const { isLoggedIn } = useAuth();
-  const { colors } = useTheme();
-
-  // 主題色變化時重新產生地圖樣式
-  const mapStyle = useMemo(() => getMapStyle(colors), [colors]);
+  const C = usePAL();
 
   const {
     mapRef, mySpots,
@@ -32,13 +36,12 @@ const MapScreen = () => {
   } = useMapLogic({ isLoggedIn });
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.paper }]}>
+    <View style={styles.container}>
       <MapView
         provider={MAP_PROVIDER}
         ref={mapRef}
         style={StyleSheet.absoluteFillObject}
         initialRegion={{ latitude: 25.0400, longitude: 121.5450, latitudeDelta: 0.05, longitudeDelta: 0.05 }}
-        customMapStyle={Platform.OS === 'android' ? mapStyle : undefined}
         showsUserLocation={true}
         showsMyLocationButton={false}
         onLongPress={handleMapLongPress}
@@ -49,16 +52,13 @@ const MapScreen = () => {
             coordinate={{ latitude: spot.lat, longitude: spot.lng }}
             onPress={(e) => { e.stopPropagation(); openMySpotDetail(spot); }}
           >
-            {/* 主題色 marker */}
-            <View style={[
-              styles.markerOuter,
-              { backgroundColor: colors.accent, borderColor: colors.paper },
-            ]}>
-              <View style={[styles.markerInner, { backgroundColor: colors.paper }]}>
+            {/* 粉色卡通 marker */}
+            <View style={[styles.markerOuter, { backgroundColor: C.pink }]}>
+              <View style={[styles.markerInner, { backgroundColor: C.white }]}>
                 <Ionicons
-                  name={spot.imageUri ? 'checkmark-circle' : 'camera-outline'}
-                  size={20}
-                  color={colors.accent}
+                  name={spot.imageUri ? 'checkmark' : 'camera'}
+                  size={18}
+                  color={C.pink}
                 />
               </View>
             </View>
@@ -66,28 +66,29 @@ const MapScreen = () => {
         ))}
       </MapView>
 
-      {/* 定位 FAB */}
+      {/* 定位 FAB — 白色圓形膠囊 */}
       <View style={[styles.fabContainer, { bottom: 100 + insets.bottom }]}>
         <TouchableOpacity
-          style={[styles.fab, { backgroundColor: colors.card + 'F4', borderColor: colors.line }]}
-          onPress={goToUserLocation}
-          activeOpacity={0.8}
+          style={[styles.fab, { backgroundColor: C.white }]}
+          onPress={goToUserLocation} activeOpacity={0.85}
         >
-          <Ionicons name="locate" size={22} color={colors.ink} />
+          <Ionicons name="locate" size={22} color={C.blue} />
         </TouchableOpacity>
       </View>
 
-      {/* 底部提示 banner */}
+      {/* 底部提示 banner — 白色膠囊 */}
       {!selectedSpot && (
         <View style={[styles.bannerWrap, { bottom: 16 + insets.bottom }]}>
-          <View style={[styles.banner, { backgroundColor: colors.card + 'F5', borderColor: colors.line }]}>
-            <Ionicons name="location" size={22} color={colors.accent} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={[styles.bannerTitle, { color: colors.ink }]}>我的足跡</Text>
-              <Text style={[styles.bannerText, { color: colors.ink2 }]}>
+          <View style={[styles.banner, { backgroundColor: C.white }]}>
+            <View style={[styles.bannerIcon, { backgroundColor: C.blue }]}>
+              <Ionicons name="location" size={18} color={C.white} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.bannerTitle}>我的足跡</Text>
+              <Text style={styles.bannerText}>
                 {isLoggedIn
-                  ? '長按地圖新增足跡，自動同步雲端。'
-                  : '長按地圖新增本機足跡。登入後自動同步雲端！'}
+                  ? '長按地圖新增足跡，自動同步雲端'
+                  : '長按地圖新增本機足跡，登入後雲端同步'}
               </Text>
             </View>
           </View>
@@ -109,42 +110,51 @@ const MapScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: PAL.yellow },
 
-  // Marker
+  // Marker — 粉色圓形 + 白心
   markerOuter: {
-    width: 42, height: 42, borderRadius: 21, borderWidth: 2.5,
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: PAL.pink,
     alignItems: 'center', justifyContent: 'center',
     ...Platform.select({
-      ios:     { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.35, shadowRadius: 4 },
+      ios:     { shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4 },
       android: { elevation: 4 },
     }),
   },
   markerInner: {
     width: 28, height: 28, borderRadius: 14,
+    backgroundColor: PAL.white,
     alignItems: 'center', justifyContent: 'center',
   },
 
   // FAB
   fabContainer: { position: 'absolute', right: 16, alignItems: 'center', zIndex: 10 },
   fab: {
-    width: 46, height: 46, borderRadius: 23,
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: PAL.white,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4,
-    elevation: 3,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.18, shadowRadius: 6,
+    elevation: 4,
   },
 
-  // Banner
+  // 底部 banner — 白色膠囊 + 藍色圖示底
   bannerWrap: { position: 'absolute', left: 16, right: 16, zIndex: 5 },
   banner: {
-    flexDirection: 'row', alignItems: 'center',
-    borderWidth: 1, borderRadius: 18, padding: 14,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 6,
-    elevation: 2,
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: PAL.white,
+    borderRadius: 999,
+    padding: 12, paddingRight: 18,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.12, shadowRadius: 8,
+    elevation: 3,
   },
-  bannerTitle: { fontFamily: Fonts.serifBold, fontSize: 13, marginBottom: 3 },
-  bannerText:  { fontFamily: Fonts.serif, fontSize: 12, lineHeight: 18 },
+  bannerIcon: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: PAL.blue,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  bannerTitle: { fontFamily: Fonts.sansBlack, fontSize: 13, color: PAL.black },
+  bannerText:  { fontFamily: Fonts.sansMed,   fontSize: 11, color: 'rgba(0,0,0,0.6)', lineHeight: 16, marginTop: 1 },
 });
 
 export default MapScreen;

@@ -2,17 +2,54 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, FlatList, Image,
+  Dimensions, Animated, Easing,
 } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
-import { T, Fonts } from '../../constants/theme';
-import WeatherIcon from '../../components/WeatherIcon';
+import { Fonts } from '../../constants/theme';
 import useWeather, { owmIconToKind } from '../../hooks/useWeather';
-import { useTheme, THEMES, VIBE_STYLES } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
+import { useDim, usePAL } from '../../context/DimContext';
 import { apiGet } from '../../services/apiClient';
+
+const { width: SW, height: SH } = Dimensions.get('window');
+
+const PAL = {
+  yellow: '#E2E146',
+  pink:   '#FF6FA8',
+  blue:   '#2E45B0',
+  black:  '#000000',
+  white:  '#FFFFFF',
+};
+const BORDER  = 0;
+const PILL_R  = 999;
+const HARD_SH = {};  // 無黑色硬陰影
+
+// 未登入時顯示的預設動物（food vibe = vibe3）
+const DEFAULT_AVATAR = require('../../../assets/vibe3.png');
+
+const YELLOW_H   = Math.round(SH * 0.33);   // 波浪/藍色起點（黃:藍 = 1:2）
+const AVATAR_CY  = Math.round(SH * 0.18);   // 頭像圓心（黃色 1/3 的中央）
+const AVATAR_SZ  = 130;                     // 頭像直徑
+
+// 波浪背景（與 HomeScreen 同款）
+function WaveProfile({ h }) {
+  const offset = 100;
+  const totalH = h + offset;
+  const white = `M 0,90 C ${SW*0.4},60 ${SW*0.7},180 ${SW},70 L ${SW},${totalH} L 0,${totalH} Z`;
+  const blue  = `M 0,150 C ${SW*0.4},80 ${SW*0.7},220 ${SW},140 L ${SW},${totalH} L 0,${totalH} Z`;
+  return (
+    <Svg width={SW} height={totalH} style={[StyleSheet.absoluteFillObject, { top: -offset }]}>
+      <Path d={white} fill={PAL.white} />
+      <Path d={blue}  fill={PAL.blue}  />
+    </Svg>
+  );
+}
 
 const Stack = createNativeStackNavigator();
 
@@ -22,312 +59,255 @@ export default function ProfileScreen() {
       <Stack.Screen name="ProfileMain"  component={ProfileMain} />
       <Stack.Screen name="Weather"      component={WeatherScreen} />
       <Stack.Screen name="Login"        component={LoginScreen} />
+      <Stack.Screen name="Register"     component={RegisterScreen} />
       <Stack.Screen name="MyCapsules"   component={MyCapsulesScreen} />
       <Stack.Screen name="SavedSpots"   component={SavedSpotsScreen} />
     </Stack.Navigator>
   );
 }
 
-// ─── Profile Main — 旅人手帖 ─────────────────────────────────────────────────
+// ─── Profile Main ─────────────────────────────────────────────────────────────
 
-function ProfileMain({ navigation }) {
-  const insets = useSafeAreaInsets();
-  const { colors, theme, vibeStyle, setTheme, setVibeStyle } = useTheme();
-  const { user, isLoggedIn } = useAuth();
-  const s = makeStyles(colors);
-
-  const [stats, setStats]               = useState(null);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const [tasteProfile, setTasteProfile] = useState(null);
-  const [tasteLoading, setTasteLoading] = useState(false);
-
-  // 計算加入天數（從 user.created_at）
-  const joinDays = user?.created_at
-    ? Math.floor((Date.now() - new Date(user.created_at).getTime()) / 86400000)
-    : null;
-
-  const displayName = user?.display_name || user?.username || '訪客旅人';
-  const handle      = user ? `@${user.username}` : '尚未登入';
-  const avatarChar  = (displayName || '?')[0].toUpperCase();
-
-  // 載入使用者統計
-  useEffect(() => {
-    if (!isLoggedIn) { setStats(null); return; }
-    setStatsLoading(true);
-    apiGet('/api/v1/users/me/stats')
-      .then(setStats)
-      .catch(() => {})
-      .finally(() => setStatsLoading(false));
-  }, [isLoggedIn]);
-
-  // 載入 AI 口味分析
-  const loadTaste = useCallback(async (refresh = false) => {
-    if (!isLoggedIn) { setTasteProfile(null); return; }
-    setTasteLoading(true);
-    try {
-      const data = await apiGet('/api/v1/taste/profile', refresh ? { refresh: 'true' } : {});
-      setTasteProfile(data);
-    } catch {
-      // 沒有 token / 後端未開 → 不顯示，靜默失敗
-    } finally {
-      setTasteLoading(false);
-    }
-  }, [isLoggedIn]);
-
-  useEffect(() => { loadTaste(); }, [loadTaste]);
-
-  const statCells = [
-    { l: '足跡', v: isLoggedIn ? (stats?.spots_count ?? '…') : '—' },
-    { l: '收藏', v: isLoggedIn ? (stats?.saved_count  ?? '…') : '—' },
-    { l: '天',   v: joinDays != null ? joinDays : '—' },
-  ];
-
+// ── 進場 stagger 動畫（選單膠囊一條接一條浮入）─────────────────────────────
+function StaggerItem({ index, children, style }) {
+  const v = React.useRef(new Animated.Value(0)).current;
+  React.useEffect(() => {
+    Animated.timing(v, {
+      toValue: 1,
+      duration: 380,
+      delay: index * 70,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, []);
+  const translateY = v.interpolate({ inputRange: [0, 1], outputRange: [16, 0] });
   return (
-    <ScrollView
-      style={[s.container, { paddingTop: insets.top }]}
-      contentContainerStyle={s.profileContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* ── Header: ISSUE 黃 tag + 旅人手帖 + 日期 ── */}
-      <View style={s.headerRow}>
-        <View style={{ flex: 1 }}>
-          <View style={[s.issueTag, { backgroundColor: colors.cYellow }]}>
-            <Text style={s.issueTagText}>ISSUE 043</Text>
-          </View>
-          <Text style={s.pageTitle}>
-            旅人 <Text style={s.pageTitleHeavy}>手帖</Text>
-          </Text>
-        </View>
-        <Text style={[s.pageDate, { color: colors.ink3 }]}>2026·{String(new Date().getMonth() + 1).padStart(2, '0')}</Text>
-      </View>
-
-      {/* ── Profile row ── */}
-      <View style={[s.profileRow, { borderBottomColor: colors.line }]}>
-        <View style={[s.avatarSq, { backgroundColor: isLoggedIn ? colors.ink : colors.ink3 }]}>
-          <Text style={s.avatarText}>{avatarChar}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={[s.profileName, { color: colors.ink }]}>{displayName}</Text>
-          <Text style={[s.profileHandle, { color: colors.ink3 }]}>
-            {handle}{joinDays != null ? ` · DAY ${String(joinDays).padStart(3, '0')}` : ''}
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Login')}
-          style={[s.editBtn, { borderColor: colors.ink }]}
-        >
-          <Text style={[s.editBtnText, { color: colors.ink }]}>
-            {isLoggedIn ? '編輯' : '登入'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ── 01 漫遊品味 ── */}
-      <View style={[s.section, { borderBottomColor: colors.line }]}>
-        <View style={s.sectionHead}>
-          <Text style={[s.sectionNum, { color: colors.cRed }]}>01</Text>
-          <Text style={[s.sectionTitle, { color: colors.ink }]}>漫遊品味</Text>
-          {tasteProfile?.generated && !tasteLoading && (
-            <TouchableOpacity
-              onPress={() => loadTaste(true)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{ marginLeft: 'auto' }}
-            >
-              <Ionicons name="refresh-outline" size={14} color={colors.ink3} />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {!isLoggedIn && (
-          <Text style={[s.tasteQuote, { color: colors.ink }]}>「登入後，解讀你的城市漫遊個性。」</Text>
-        )}
-
-        {isLoggedIn && tasteLoading && (
-          <View style={{ alignItems: 'center', paddingVertical: 14 }}>
-            <ActivityIndicator color={colors.ink3} />
-            <Text style={[s.tasteFoot, { color: colors.ink3, marginTop: 8 }]}>解讀中…</Text>
-          </View>
-        )}
-
-        {isLoggedIn && !tasteLoading && tasteProfile && !tasteProfile.generated && (
-          <>
-            <Text style={[s.tasteQuote, { color: colors.ink }]}>「{tasteProfile.headline}」</Text>
-            <Text style={[s.tasteFoot, { color: colors.ink3 }]}>{tasteProfile.subtitle}</Text>
-          </>
-        )}
-
-        {isLoggedIn && !tasteLoading && tasteProfile?.generated && (
-          <>
-            <Text style={[s.tasteQuote, { color: colors.ink }]}>
-              你是個
-              <Text style={[s.markText, { backgroundColor: colors.cRed }]}> {tasteProfile.headline} </Text>
-              {'\n'}{tasteProfile.subtitle}
-            </Text>
-            {tasteProfile.roaming_style ? (
-              <View style={[s.roleTag, { backgroundColor: colors.cYellow }]}>
-                <Text style={s.roleTagText}>漫遊人格 · {tasteProfile.roaming_style}</Text>
-              </View>
-            ) : null}
-            {tasteProfile.tags?.length > 0 && (
-              <View style={s.tagsRow}>
-                {tasteProfile.tags.map((tag, i) => (
-                  <Text key={i} style={[s.tagText, { color: colors.ink3 }]}>#{tag}</Text>
-                ))}
-              </View>
-            )}
-            {tasteProfile.top_vibes?.length > 0 && (
-              <Text style={[s.tasteFoot, { color: colors.ink3, marginTop: 8 }]}>
-                偏好 Vibe · {tasteProfile.top_vibes.join(' / ')}
-              </Text>
-            )}
-          </>
-        )}
-
-        {isLoggedIn && tasteProfile?.generated && (
-          <Text style={[s.tasteCredit, { color: colors.ink3 }]}>— 根據近 30 天足跡分析</Text>
-        )}
-      </View>
-
-      {/* ── 02 足跡統計 / 登入 CTA ── */}
-      <View style={[s.section, { borderBottomColor: colors.line }]}>
-        <View style={s.sectionHead}>
-          <Text style={[s.sectionNum, { color: colors.cBlue }]}>02</Text>
-          <Text style={[s.sectionTitle, { color: colors.ink }]}>
-            {isLoggedIn ? '足跡統計' : '解鎖完整功能'}
-          </Text>
-        </View>
-
-        {isLoggedIn ? (
-          <View style={[s.statsGrid, { borderLeftColor: colors.line }]}>
-            {[
-              { l: '足跡', v: stats?.spots_count ?? '…', c: colors.cRed,    spin: true },
-              { l: '盲盒', v: '—',                       c: colors.cYellow, spin: false },
-              { l: '收藏', v: stats?.saved_count ?? '…', c: colors.cBlue,   spin: true },
-              { l: '天',   v: joinDays != null ? joinDays : '—', c: colors.cGreen, spin: false },
-            ].map((x, i) => (
-              <View key={i} style={[s.statCell, { borderRightColor: colors.line }]}>
-                {statsLoading && x.spin ? (
-                  <ActivityIndicator size="small" color={colors.ink3} style={{ height: 28 }} />
-                ) : (
-                  <Text style={[s.statVal, { color: x.c }]}>{x.v}</Text>
-                )}
-                <Text style={[s.statLab, { color: colors.ink3 }]}>{x.l}</Text>
-              </View>
-            ))}
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={s.loginCta}
-            onPress={() => navigation.navigate('Login')}
-            activeOpacity={0.85}
-          >
-            <Ionicons name="person-add-outline" size={22} color={colors.ink2} style={{ marginBottom: 6 }} />
-            <Text style={[s.loginCtaTitle, { color: colors.ink }]}>登入後解鎖完整功能</Text>
-            <Text style={[s.loginCtaSub, { color: colors.ink3 }]}>足跡同步 · 漫遊品味解析 · 行程收藏雲端備份</Text>
-            <View style={[s.loginCtaBtn, { backgroundColor: colors.ink }]}>
-              <Text style={[s.loginCtaBtnText, { color: colors.paper }]}>立即登入 →</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* ── 03 目錄 ── */}
-      <View style={[s.section, { borderBottomWidth: 0 }]}>
-        <View style={s.sectionHead}>
-          <Text style={[s.sectionNum, { color: colors.cGreen }]}>03</Text>
-          <Text style={[s.sectionTitle, { color: colors.ink }]}>目錄</Text>
-        </View>
-      </View>
-      <View style={[s.menuList, { borderTopColor: colors.ink }]}>
-        {[
-          {
-            label: '我的膠囊',
-            badge: isLoggedIn ? (stats?.spots_count != null ? String(stats.spots_count) : '…') : '—',
-            onPress: isLoggedIn ? () => navigation.navigate('MyCapsules') : () => navigation.navigate('Login'),
-          },
-          {
-            label: '收藏的地標',
-            badge: isLoggedIn ? (stats?.saved_count != null ? String(stats.saved_count) : '…') : '—',
-            onPress: isLoggedIn ? () => navigation.navigate('SavedSpots') : () => navigation.navigate('Login'),
-          },
-          { label: '天氣通知',  badge: 'ON', onPress: () => navigation.navigate('Weather') },
-          { label: '帳號與登入', badge: '→', onPress: () => navigation.navigate('Login') },
-        ].map((item, i) => (
-          <TouchableOpacity
-            key={i}
-            style={[s.menuRow, { borderBottomColor: colors.line }]}
-            onPress={item.onPress}
-            activeOpacity={0.7}
-          >
-            <Text style={[s.menuLabel, { color: colors.ink }]}>{item.label}</Text>
-            <Text style={[s.menuBadge, { color: colors.ink3 }]}>{item.badge}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* ── 04 外觀設定 ── */}
-      <View style={s.section}>
-        <View style={s.sectionHead}>
-          <Text style={[s.sectionNum, { color: colors.cPink }]}>04</Text>
-          <Text style={[s.sectionTitle, { color: colors.ink }]}>外觀設定</Text>
-        </View>
-
-        <Text style={[s.settingLabel, { color: colors.ink3, marginTop: 4 }]}>主題色調</Text>
-        <View style={s.themeRow}>
-          {THEMES.map(t => {
-            const isActive = theme === t.key;
-            return (
-              <TouchableOpacity
-                key={t.key}
-                onPress={() => setTheme(t.key)}
-                activeOpacity={0.7}
-                style={[s.themeChip, {
-                  backgroundColor: t.swatch,
-                  borderColor: isActive ? t.dot : colors.line,
-                  borderWidth: isActive ? 2 : 1,
-                }]}
-              >
-                <View style={[s.themeDot, { backgroundColor: t.dot }]} />
-                <Text style={[s.themeChipText, { color: isActive ? t.dot : colors.ink2 }]}>{t.zh}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        <Text style={[s.settingLabel, { color: colors.ink3, marginTop: 14 }]}>Vibe 按鈕樣式</Text>
-        <View style={s.vibeStyleRow}>
-          {VIBE_STYLES.map(v => {
-            const isActive = vibeStyle === v.key;
-            return (
-              <TouchableOpacity
-                key={v.key}
-                onPress={() => setVibeStyle(v.key)}
-                activeOpacity={0.7}
-                style={[s.vibeStyleBtn, {
-                  backgroundColor: isActive ? colors.ink : 'transparent',
-                  borderColor: isActive ? colors.ink : colors.line,
-                }]}
-              >
-                <Text style={[s.vibeStyleText, { color: isActive ? colors.paper : colors.ink2 }]}>{v.zh}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      <Text style={[s.footer, { color: colors.ink4 }]}>VibeTrip</Text>
-    </ScrollView>
+    <Animated.View style={[style, { opacity: v, transform: [{ translateY }] }]}>
+      {children}
+    </Animated.View>
   );
 }
 
-// ─── My Capsules Screen ───────────────────────────────────────────────────────
+function ProfileMain({ navigation }) {
+  const insets   = useSafeAreaInsets();
+  const { user, isLoggedIn } = useAuth();
+  const { dim, toggleDim } = useDim();
+  const C = usePAL();
 
-function MyCapsulesScreen({ navigation }) {
+  const [stats, setStats]   = useState(null);
+  const [avatarUri, setAvatarUri] = useState(null);
+
+  const joinDays   = user?.created_at
+    ? Math.floor((Date.now() - new Date(user.created_at).getTime()) / 86400000)
+    : null;
+  const displayName = user?.display_name || user?.username || '旅人';
+  const handle      = user ? `@${user.username}` : '未登入';
+
+  // 讀取本機儲存的頭像
+  useEffect(() => {
+    AsyncStorage.getItem('vt_avatar_uri').then(uri => { if (uri) setAvatarUri(uri); });
+  }, []);
+
+  // 載入統計
+  useEffect(() => {
+    if (!isLoggedIn) { setStats(null); return; }
+    apiGet('/api/v1/users/me/stats').then(setStats).catch(() => {});
+  }, [isLoggedIn]);
+
+  // 換頭像（登入後才可用）
+  const pickAvatar = async () => {
+    if (!isLoggedIn) return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.85,
+    });
+    if (!result.canceled) {
+      const uri = result.assets[0].uri;
+      setAvatarUri(uri);
+      await AsyncStorage.setItem('vt_avatar_uri', uri);
+    }
+  };
+
+  const menuItems = [
+    { label: '我的膠囊', icon: 'camera-outline',   badge: isLoggedIn ? (stats?.spots_count ?? '…') : '—', onPress: isLoggedIn ? () => navigation.navigate('MyCapsules') : () => navigation.navigate('Login') },
+    { label: '收藏地標', icon: 'bookmark-outline',  badge: isLoggedIn ? (stats?.saved_count  ?? '…') : '—', onPress: isLoggedIn ? () => navigation.navigate('SavedSpots') : () => navigation.navigate('Login') },
+    { label: '天氣',     icon: 'partly-sunny-outline', badge: '→', onPress: () => navigation.navigate('Weather') },
+    {
+      label: '低明度模式',
+      icon: dim ? 'moon' : 'moon-outline',
+      badge: dim ? 'ON' : 'OFF',
+      onPress: toggleDim,
+    },
+    { label: '帳號',     icon: 'person-outline',    badge: '→', onPress: () => navigation.navigate('Login') },
+  ];
+
+  const AVATAR_TOP  = AVATAR_CY - AVATAR_SZ / 2;
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.blue }}>
+      <ScrollView
+        bounces={false}
+        overScrollMode="never"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
+        {/* 黃色滿版底色佔位 */}
+        <View style={{ height: YELLOW_H, backgroundColor: C.yellow }} />
+
+        {/* 波浪 SVG */}
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', left: 0, right: 0, top: YELLOW_H - 120, height: 240, zIndex: 1 }}
+        >
+          <Svg width={SW} height={240}>
+            <Path d={`M 0,75 C ${SW*0.35},38 ${SW*0.65},158 ${SW},58 L ${SW},240 L 0,240 Z`} fill={C.white} />
+            <Path d={`M 0,122 C ${SW*0.35},85 ${SW*0.65},198 ${SW},108 L ${SW},240 L 0,240 Z`} fill={C.blue} />
+          </Svg>
+        </View>
+
+        {/* 頭像 */}
+        <TouchableOpacity
+          style={[ps.avatarOuter, { top: AVATAR_TOP, zIndex: 20 }]}
+          onPress={pickAvatar}
+          activeOpacity={isLoggedIn ? 0.85 : 1}
+        >
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={ps.avatarImg} />
+          ) : (
+            <Image source={DEFAULT_AVATAR} style={ps.avatarImg} resizeMode="contain" />
+          )}
+          {isLoggedIn && (
+            <View style={ps.cameraIcon}>
+              <Ionicons name="camera" size={14} color={PAL.white} />
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* 內容區 */}
+        <View style={{
+          paddingTop: 40,
+          paddingHorizontal: 20,
+          paddingBottom: insets.bottom + 90,
+          zIndex: 2,
+        }}>
+          <View style={ps.nameBlock}>
+            <Text style={ps.displayName}>{displayName}</Text>
+            <Text style={ps.handle}>{handle}{joinDays != null ? `  ·  DAY ${String(joinDays).padStart(3,'0')}` : ''}</Text>
+          </View>
+
+          {isLoggedIn && (
+            <View style={ps.statsRow}>
+              {[
+                { v: stats?.spots_count ?? '…', l: '足跡' },
+                { v: stats?.saved_count  ?? '…', l: '收藏' },
+                { v: joinDays ?? '…',            l: '天數' },
+              ].map((x, i) => (
+                <View key={i} style={[ps.statPill, { backgroundColor: i===0 ? C.pink : i===1 ? C.white : C.yellow }]}>
+                  <Text style={[ps.statVal, { color: C.black }]}>{x.v}</Text>
+                  <Text style={[ps.statLab, { color: C.black }]}>{x.l}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {!isLoggedIn && (
+            <TouchableOpacity
+              style={[ps.loginPill, { backgroundColor: C.pink }]}
+              onPress={() => navigation.navigate('Login')} activeOpacity={0.85}
+            >
+              <Text style={[ps.loginPillTxt, { color: C.black }]}>登入帳號 →</Text>
+            </TouchableOpacity>
+          )}
+
+          <View style={ps.menuList}>
+            {menuItems.map((item, i) => {
+              const BG  = [C.white, C.pink, C.yellow, C.blue, C.white][i % 5];
+              const ink = BG === C.blue ? C.white : C.black;
+              const sdw = BG === C.yellow ? C.blue : BG === C.white ? C.pink : C.black;
+              return (
+                <StaggerItem key={i} index={i} style={ps.menuRowWrap}>
+                  <View style={[ps.menuRowShadow, { backgroundColor: sdw }]} />
+                  <TouchableOpacity
+                    style={[ps.menuRow, { backgroundColor: BG }]}
+                    onPress={item.onPress} activeOpacity={0.85}
+                  >
+                    <Ionicons name={item.icon} size={22} color={ink} />
+                    <Text style={[ps.menuRowLabel, { color: ink }]}>{item.label}</Text>
+                    <Text style={[ps.menuRowBadge, { color: ink, opacity: 0.55 }]}>{item.badge}</Text>
+                    <Ionicons name="chevron-forward" size={16} color={ink} style={{ opacity: 0.4 }} />
+                  </TouchableOpacity>
+                </StaggerItem>
+              );
+            })}
+          </View>
+
+          <Text style={ps.footer}>VibeTrip</Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+// ─── 子畫面共用 Header ────────────────────────────────────────────────────────
+function SubHeader({ navigation, title, colors }) {
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
-  const ws = makeWsStyles(colors);
-  const cs = makeCsStyles(colors);
+  const bg = colors?.yellow ?? PAL.yellow;
+  return (
+    <View style={[subStyles.header, { paddingTop: insets.top + 10, backgroundColor: bg }]}>
+      <TouchableOpacity
+        style={subStyles.backRow}
+        onPress={() => navigation.goBack()}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+      >
+        <Ionicons name="chevron-back" size={20} color={PAL.black} />
+        <Text style={subStyles.backTxt}>返回</Text>
+      </TouchableOpacity>
+      <Text style={subStyles.title}>{title}</Text>
+      <View style={{ width: 56 }} />
+    </View>
+  );
+}
 
+const subStyles = StyleSheet.create({
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 16, paddingBottom: 12,
+    backgroundColor: PAL.yellow,
+  },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 56 },
+  backTxt: { fontFamily: Fonts.sansBold, fontSize: 14, color: PAL.black },
+  title:   { fontFamily: Fonts.sansBlack, fontSize: 16, color: PAL.black, letterSpacing: 1 },
+
+  center:    { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 32 },
+  emptyText: { fontFamily: Fonts.sansBlack, fontSize: 16, color: PAL.black, marginTop: 8 },
+  emptyHint: { fontFamily: Fonts.sansMed,   fontSize: 13, color: 'rgba(0,0,0,0.55)', textAlign: 'center' },
+
+  // 卡片
+  card: {
+    backgroundColor: PAL.white,
+    borderRadius: 22,
+    overflow: 'hidden',
+    marginHorizontal: 16, marginBottom: 14,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 8,
+    elevation: 2,
+  },
+  cardImage:   { width: '100%', height: 180, resizeMode: 'cover' },
+  imgPlaceholder: { width: '100%', height: 120, alignItems: 'center', justifyContent: 'center', backgroundColor: PAL.yellow, gap: 6 },
+  imgPlaceholderTxt: { fontFamily: Fonts.sansBold, fontSize: 11, color: 'rgba(0,0,0,0.55)', letterSpacing: 1 },
+  cardBody:    { padding: 16 },
+  cardNote:    { fontFamily: Fonts.sansMed, fontSize: 14, color: PAL.black, lineHeight: 22, marginBottom: 10 },
+  cardMeta:    { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  cardMetaTxt: { fontFamily: Fonts.sansMed, fontSize: 10, color: 'rgba(0,0,0,0.5)' },
+
+  authorRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
+  avatar:      { width: 36, height: 36, borderRadius: 18, backgroundColor: PAL.pink, alignItems: 'center', justifyContent: 'center' },
+  avatarTxt:   { fontFamily: Fonts.sansBlack, fontSize: 14, color: PAL.white },
+  authorName:  { fontFamily: Fonts.sansBlack, fontSize: 13, color: PAL.black },
+  authorTime:  { fontFamily: Fonts.sansMed, fontSize: 10, color: 'rgba(0,0,0,0.5)', marginTop: 1 },
+});
+
+// ─── My Capsules Screen ───────────────────────────────────────────────────────
+function MyCapsulesScreen({ navigation }) {
+  const C = usePAL();
   const [spots, setSpots]     = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -339,54 +319,49 @@ function MyCapsulesScreen({ navigation }) {
   }, []);
 
   const renderItem = useCallback(({ item }) => (
-    <View style={cs.card}>
+    <View style={subStyles.card}>
       {item.image_url ? (
-        <Image source={{ uri: item.image_url }} style={cs.cardImage} />
+        <Image source={{ uri: item.image_url }} style={subStyles.cardImage} />
       ) : (
-        <View style={[cs.cardImagePlaceholder, { backgroundColor: colors.paper2 }]}>
-          <Ionicons name="camera-outline" size={28} color={colors.ink3} />
+        <View style={subStyles.imgPlaceholder}>
+          <Ionicons name="camera-outline" size={28} color={PAL.black} />
+          <Text style={subStyles.imgPlaceholderTxt}>無照片</Text>
         </View>
       )}
-      <View style={cs.cardBody}>
-        <Text style={[cs.cardNote, { color: colors.ink2 }]} numberOfLines={4}>
+      <View style={subStyles.cardBody}>
+        <Text style={subStyles.cardNote} numberOfLines={4}>
           {item.note || '（無備註）'}
         </Text>
-        <View style={cs.cardMeta}>
-          <Ionicons name={item.is_public ? 'earth-outline' : 'lock-closed-outline'} size={12} color={colors.ink3} />
-          <Text style={[cs.cardMetaText, { color: colors.ink3 }]}>
+        <View style={subStyles.cardMeta}>
+          <Ionicons name={item.is_public ? 'earth-outline' : 'lock-closed-outline'} size={12} color="rgba(0,0,0,0.5)" />
+          <Text style={subStyles.cardMetaTxt}>
             {item.is_public ? '已公開' : '私人'} · {new Date(item.created_at).toLocaleDateString('zh-TW')}
           </Text>
         </View>
       </View>
     </View>
-  ), [colors]);
+  ), []);
 
   return (
-    <View style={[ws.container, { paddingTop: insets.top }]}>
-      <View style={ws.navRow}>
-        <TouchableOpacity style={ws.iconBtn} onPress={() => navigation.goBack()}>
-          <Text style={ws.backArrow}>‹</Text>
-        </TouchableOpacity>
-        <Text style={ws.navLabel}>MY CAPSULES</Text>
-        <View style={{ width: 36 }} />
-      </View>
+    <View style={{ flex: 1, backgroundColor: C.yellow }}>
+      <SubHeader navigation={navigation} title="我的膠囊" colors={C} />
 
       {loading ? (
-        <View style={cs.center}>
-          <ActivityIndicator size="large" color={colors.ink3} />
+        <View style={subStyles.center}>
+          <ActivityIndicator size="large" color={PAL.blue} />
         </View>
       ) : spots.length === 0 ? (
-        <View style={cs.center}>
-          <Ionicons name="camera-outline" size={48} color={colors.ink4} />
-          <Text style={[cs.emptyText, { color: colors.ink3 }]}>還沒有足跡膠囊</Text>
-          <Text style={[cs.emptyHint, { color: colors.ink4 }]}>到地圖長按新增你的第一個足跡</Text>
+        <View style={subStyles.center}>
+          <Ionicons name="camera-outline" size={48} color="rgba(0,0,0,0.3)" />
+          <Text style={subStyles.emptyText}>還沒有足跡膠囊</Text>
+          <Text style={subStyles.emptyHint}>到地圖長按新增你的第一個足跡</Text>
         </View>
       ) : (
         <FlatList
           data={spots}
           keyExtractor={item => String(item.id)}
           renderItem={renderItem}
-          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
           showsVerticalScrollIndicator={false}
         />
       )}
@@ -395,13 +370,19 @@ function MyCapsulesScreen({ navigation }) {
 }
 
 // ─── Saved Spots Screen ───────────────────────────────────────────────────────
+function timeAgo(isoStr) {
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return '剛剛';
+  if (m < 60) return `${m} 分鐘前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小時前`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? '昨天' : `${d} 天前`;
+}
 
 function SavedSpotsScreen({ navigation }) {
-  const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
-  const ws = makeWsStyles(colors);
-  const cs = makeCsStyles(colors);
-
+  const C = usePAL();
   const [spots, setSpots]     = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -412,76 +393,58 @@ function SavedSpotsScreen({ navigation }) {
       .finally(() => setLoading(false));
   }, []);
 
-  function timeAgo(isoStr) {
-    const diff = Date.now() - new Date(isoStr).getTime();
-    const m = Math.floor(diff / 60000);
-    if (m < 1)  return '剛剛';
-    if (m < 60) return `${m} 分鐘前`;
-    const h = Math.floor(m / 60);
-    if (h < 24) return `${h} 小時前`;
-    const d = Math.floor(h / 24);
-    return d === 1 ? '昨天' : `${d} 天前`;
-  }
-
   const renderItem = useCallback(({ item }) => {
     const author = item.author;
     return (
-      <View style={cs.card}>
+      <View style={subStyles.card}>
         {item.image_url ? (
-          <Image source={{ uri: item.image_url }} style={cs.cardImage} />
+          <Image source={{ uri: item.image_url }} style={subStyles.cardImage} />
         ) : null}
-        <View style={cs.cardBody}>
-          {/* 作者列 */}
-          <View style={cs.authorRow}>
-            <View style={[cs.avatar, { backgroundColor: colors.accent }]}>
-              <Text style={[cs.avatarText, { color: colors.paper }]}>
+        <View style={subStyles.cardBody}>
+          <View style={subStyles.authorRow}>
+            <View style={subStyles.avatar}>
+              <Text style={subStyles.avatarTxt}>
                 {(author.display_name || author.username || '?')[0].toUpperCase()}
               </Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[cs.authorName, { color: colors.ink }]}>{author.display_name || author.username}</Text>
-              <Text style={[cs.authorTime, { color: colors.ink3 }]}>@{author.username} · {timeAgo(item.created_at)}</Text>
+              <Text style={subStyles.authorName}>{author.display_name || author.username}</Text>
+              <Text style={subStyles.authorTime}>@{author.username} · {timeAgo(item.created_at)}</Text>
             </View>
-            <Ionicons name="bookmark" size={16} color={colors.accent} />
+            <Ionicons name="bookmark" size={16} color={PAL.pink} />
           </View>
-          <Text style={[cs.cardNote, { color: colors.ink2 }]} numberOfLines={3}>{item.content}</Text>
-          <View style={cs.cardMeta}>
-            <Ionicons name="heart-outline" size={12} color={colors.ink3} />
-            <Text style={[cs.cardMetaText, { color: colors.ink3 }]}>{item.likes_count}</Text>
-            <Ionicons name="bookmark-outline" size={12} color={colors.ink3} style={{ marginLeft: 10 }} />
-            <Text style={[cs.cardMetaText, { color: colors.ink3 }]}>{item.saves_count}</Text>
+          <Text style={subStyles.cardNote} numberOfLines={3}>{item.content}</Text>
+          <View style={subStyles.cardMeta}>
+            <Ionicons name="heart-outline" size={12} color="rgba(0,0,0,0.5)" />
+            <Text style={subStyles.cardMetaTxt}>{item.likes_count}</Text>
+            <Ionicons name="bookmark-outline" size={12} color="rgba(0,0,0,0.5)" style={{ marginLeft: 10 }} />
+            <Text style={subStyles.cardMetaTxt}>{item.saves_count}</Text>
           </View>
         </View>
       </View>
     );
-  }, [colors]);
+  }, []);
 
   return (
-    <View style={[ws.container, { paddingTop: insets.top }]}>
-      <View style={ws.navRow}>
-        <TouchableOpacity style={ws.iconBtn} onPress={() => navigation.goBack()}>
-          <Text style={ws.backArrow}>‹</Text>
-        </TouchableOpacity>
-        <Text style={ws.navLabel}>SAVED SPOTS</Text>
-        <View style={{ width: 36 }} />
-      </View>
+    <View style={{ flex: 1, backgroundColor: PAL.yellow }}>
+      <SubHeader navigation={navigation} title="收藏地標" colors={C} />
 
       {loading ? (
-        <View style={cs.center}>
-          <ActivityIndicator size="large" color={colors.ink3} />
+        <View style={subStyles.center}>
+          <ActivityIndicator size="large" color={PAL.blue} />
         </View>
       ) : spots.length === 0 ? (
-        <View style={cs.center}>
-          <Ionicons name="bookmark-outline" size={48} color={colors.ink4} />
-          <Text style={[cs.emptyText, { color: colors.ink3 }]}>還沒有收藏的地標</Text>
-          <Text style={[cs.emptyHint, { color: colors.ink4 }]}>到探索頁點收藏來蒐集喜歡的地方</Text>
+        <View style={subStyles.center}>
+          <Ionicons name="bookmark-outline" size={48} color="rgba(0,0,0,0.3)" />
+          <Text style={subStyles.emptyText}>還沒有收藏的地標</Text>
+          <Text style={subStyles.emptyHint}>到探索頁點收藏來蒐集喜歡的地方</Text>
         </View>
       ) : (
         <FlatList
           data={spots}
           keyExtractor={item => String(item.id)}
           renderItem={renderItem}
-          contentContainerStyle={{ padding: 16, paddingBottom: 40 }}
+          contentContainerStyle={{ paddingTop: 8, paddingBottom: 40 }}
           showsVerticalScrollIndicator={false}
         />
       )}
@@ -506,11 +469,31 @@ function formatDay(dateStr) {
   return days[new Date(dateStr).getDay()];
 }
 
+// 天氣動畫圖（與 HomeScreen 同款，僅 sun/rain 兩組）
+const WEATHER_FRAMES = {
+  sunny:  [require('../../../assets/sun1.png'),  require('../../../assets/sun2.png')],
+  partly: [require('../../../assets/sun1.png'),  require('../../../assets/sun2.png')],
+  cloudy: [require('../../../assets/sun1.png'),  require('../../../assets/sun2.png')],
+  night:  [require('../../../assets/sun1.png'),  require('../../../assets/sun2.png')],
+  rain:   [require('../../../assets/rain1.png'), require('../../../assets/rain2.png'),
+           require('../../../assets/rain3.png'), require('../../../assets/rain4.png')],
+};
+
+// 小型動畫天氣圖
+function AnimatedWeatherImg({ kind = 'partly', size = 40 }) {
+  const [idx, setIdx] = useState(0);
+  const frames = WEATHER_FRAMES[kind] || WEATHER_FRAMES.partly;
+  useEffect(() => {
+    const t = setInterval(() => setIdx(p => (p + 1) % frames.length), 500);
+    return () => clearInterval(t);
+  }, [frames.length]);
+  return <Image source={frames[idx]} style={{ width: size, height: size }} resizeMode="contain" fadeDuration={0} />;
+}
+
 function WeatherScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
-  const ws = makeWsStyles(colors);
   const { current, forecast, loading } = useWeather();
+  const C = usePAL();
 
   const dailyRain = useMemo(() => {
     if (!forecast) return {};
@@ -525,532 +508,696 @@ function WeatherScreen({ navigation }) {
   }, [forecast]);
 
   const now       = new Date();
-  const dateLabel = now.toLocaleDateString('en-US', { month: 'long', day: 'numeric' }).toUpperCase();
+  const dateLabel = now.toLocaleDateString('zh-TW', { month: 'long', day: 'numeric' });
   const timeLabel = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
   const heroKind  = current ? owmIconToKind(current.icon) : 'partly';
   const hours     = forecast ? forecast.hourly.slice(0, 8) : [];
   const days      = forecast ? forecast.daily : [];
 
   return (
-    <View style={[ws.container, { paddingTop: insets.top }]}>
-      <View style={ws.navRow}>
-        <TouchableOpacity style={ws.iconBtn} onPress={() => navigation.goBack()}>
-          <Text style={ws.backArrow}>‹</Text>
-        </TouchableOpacity>
-        <Text style={ws.navLabel}>WEATHER · {current?.district?.toUpperCase() ?? '—'}</Text>
-        <View style={{ width: 36 }} />
-      </View>
+    <View style={{ flex: 1, backgroundColor: C.blue }}>
+      <ScrollView
+        bounces={false}
+        overScrollMode="never"
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 100 }}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* 黃色 hero 區（佔螢幕約 1/3）*/}
+        <View style={[wsx.heroWrap, { backgroundColor: C.yellow, paddingTop: insets.top + 44 }]}>
+          <TouchableOpacity
+            style={[wsx.backRow, { top: insets.top + 14, left: 16 }]}
+            onPress={() => navigation.goBack()}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="chevron-back" size={20} color={PAL.black} />
+            <Text style={wsx.backTxt}>返回</Text>
+          </TouchableOpacity>
 
-      {loading && !current ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-          <ActivityIndicator size="large" color={colors.ink} />
-          <Text style={{ fontFamily: Fonts.serif, fontSize: 14, color: colors.ink2 }}>讀取天氣中…</Text>
-        </View>
-      ) : (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ padding: 20, paddingBottom: 40 }}>
-          {/* hero */}
-          <Text style={ws.weatherDate}>{timeLabel} · {dateLabel}</Text>
-          <View style={ws.weatherHero}>
-            <View>
-              <Text style={ws.weatherTemp}>{current ? Math.round(current.temperature) : '--'}°</Text>
-              <Text style={ws.weatherCond}>
-                {current ? `${current.description} · 體感 ${Math.round(current.feels_like)}°` : '—'}
+          {/* 大圖 + 大溫度 */}
+          <View style={wsx.heroRow}>
+            <AnimatedWeatherImg kind={heroKind} size={140} />
+            <View style={{ flex: 1 }}>
+              <Text style={[wsx.tempBig, { color: C.black }]}>
+                {current ? Math.round(current.temperature) : '--'}
+                <Text style={[wsx.tempDeg, { color: C.pink }]}>°</Text>
               </Text>
+              <Text style={wsx.locText}>{current?.district ?? '—'}</Text>
             </View>
-            <WeatherIcon kind={heroKind} size={80} color="#C4A881" />
-          </View>
-          {current?.greeting ? (
-            <Text style={ws.weatherQuote}>「{current.greeting}」</Text>
-          ) : null}
-
-          {/* hourly */}
-          <View style={ws.card}>
-            <Text style={ws.cardLabel}>HOURLY</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={ws.hourlyRow}>
-                {hours.map((h, i) => (
-                  <View key={i} style={ws.hourItem}>
-                    <Text style={ws.hourTime}>{formatHour(h.time, i === 0)}</Text>
-                    <WeatherIcon kind={owmIconToKind(h.icon)} size={22} color={colors.ink2} />
-                    <Text style={ws.hourTemp}>{Math.round(h.temperature)}°</Text>
-                  </View>
-                ))}
-              </View>
-            </ScrollView>
           </View>
 
-          {/* daily */}
-          <View style={[ws.card, { marginTop: 12 }]}>
-            <Text style={ws.cardLabel}>{days.length}-DAY FORECAST</Text>
-            {days.map((d, i) => {
-              const rainPct = Math.round((dailyRain[d.date] ?? 0) * 100);
-              return (
-                <View key={i} style={[ws.dayRow, i > 0 && ws.dayRowBorder]}>
-                  <Text style={ws.dayName}>{formatDay(d.date)}</Text>
-                  <WeatherIcon kind={owmIconToKind(d.icon)} size={20} color={colors.ink2} />
-                  <Text style={ws.dayRain}>💧{rainPct}%</Text>
-                  <Text style={ws.dayLow}>{Math.round(d.temp_min)}°</Text>
-                  <View style={ws.dayBar}>
-                    <View style={[ws.dayBarFill, {
-                      left: `${Math.max(0, (d.temp_min - 15) * 8)}%`,
-                      width: `${Math.min(100, (d.temp_max - d.temp_min) * 8)}%`,
-                    }]} />
-                  </View>
-                  <Text style={ws.dayHigh}>{Math.round(d.temp_max)}°</Text>
+          <Text style={wsx.condText}>
+            {current ? `${current.description} · 體感 ${Math.round(current.feels_like)}°` : '—'}
+          </Text>
+          <Text style={wsx.dateText}>{timeLabel}  ·  {dateLabel}</Text>
+        </View>
+
+        {/* 波浪 */}
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', left: 0, right: 0, top: Math.round(SH * 0.33) - 120, height: 240, zIndex: 1 }}
+        >
+          <Svg width={SW} height={240}>
+            <Path d={`M 0,75 C ${SW*0.35},38 ${SW*0.65},158 ${SW},58 L ${SW},240 L 0,240 Z`} fill={C.white} />
+            <Path d={`M 0,122 C ${SW*0.35},85 ${SW*0.65},198 ${SW},108 L ${SW},240 L 0,240 Z`} fill={C.blue} />
+          </Svg>
+        </View>
+
+        {/* 藍色內容 */}
+        <View style={{ paddingHorizontal: 18, paddingTop: 20, gap: 14, zIndex: 2 }}>
+
+          {loading && !current && (
+            <ActivityIndicator size="large" color={PAL.white} style={{ marginTop: 60 }} />
+          )}
+
+          {current?.greeting && (
+            <Text style={wsx.greeting}>「{current.greeting}」</Text>
+          )}
+
+          {/* HOURLY 膠囊 */}
+          {hours.length > 0 && (
+            <View style={[wsx.card, { backgroundColor: C.white }]}>
+              <Text style={wsx.cardLabel}>逐時預報</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                <View style={wsx.hourlyRow}>
+                  {hours.map((h, i) => (
+                    <View key={i} style={wsx.hourItem}>
+                      <Text style={wsx.hourTime}>{formatHour(h.time, i === 0)}</Text>
+                      <AnimatedWeatherImg kind={owmIconToKind(h.icon)} size={36} />
+                      <Text style={wsx.hourTemp}>{Math.round(h.temperature)}°</Text>
+                    </View>
+                  ))}
                 </View>
-              );
-            })}
-          </View>
+              </ScrollView>
+            </View>
+          )}
 
-          {/* detail grid */}
-          {current && (
-            <View style={ws.detailGrid}>
-              {[
-                { l: '濕度',  v: current.humidity,               u: '%',   hint: current.humidity > 70 ? '偏濕' : '舒適' },
-                { l: '風速',  v: current.wind_speed.toFixed(1),  u: 'm/s', hint: '風速' },
-                { l: '氣壓',  v: current.pressure,               u: 'hPa', hint: current.pressure > 1013 ? '高壓' : '低壓' },
-                { l: '體感',  v: Math.round(current.feels_like), u: '°',   hint: current.feels_like > current.temperature ? '偏熱' : '偏涼' },
-              ].map((x, i) => (
-                <View key={i} style={[ws.card, ws.detailCard]}>
-                  <Text style={ws.cardLabel}>{x.l.toUpperCase()}</Text>
-                  <View style={ws.detailValRow}>
-                    <Text style={ws.detailVal}>{x.v}</Text>
-                    <Text style={ws.detailUnit}>{x.u}</Text>
+          {/* DAILY 膠囊 */}
+          {days.length > 0 && (
+            <View style={[wsx.card, { backgroundColor: C.pink }]}>
+              <Text style={[wsx.cardLabel, { color: PAL.white }]}>{days.length} 天預報</Text>
+              {days.map((d, i) => {
+                const rainPct = Math.round((dailyRain[d.date] ?? 0) * 100);
+                return (
+                  <View key={i} style={wsx.dayRow}>
+                    <Text style={[wsx.dayName, { color: PAL.white }]}>{formatDay(d.date)}</Text>
+                    <AnimatedWeatherImg kind={owmIconToKind(d.icon)} size={28} />
+                    <View style={wsx.dayRainBox}>
+                      <Ionicons name="water" size={11} color={PAL.white} />
+                      <Text style={[wsx.dayRain, { color: PAL.white }]}>{rainPct}%</Text>
+                    </View>
+                    <Text style={[wsx.dayLow, { color: 'rgba(255,255,255,0.7)' }]}>{Math.round(d.temp_min)}°</Text>
+                    <View style={[wsx.dayBar, { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
+                      <View style={[wsx.dayBarFill, {
+                        backgroundColor: PAL.white,
+                        left: `${Math.max(0, (d.temp_min - 15) * 8)}%`,
+                        width: `${Math.min(100, (d.temp_max - d.temp_min) * 8)}%`,
+                      }]} />
+                    </View>
+                    <Text style={[wsx.dayHigh, { color: PAL.white }]}>{Math.round(d.temp_max)}°</Text>
                   </View>
-                  <Text style={ws.detailHint}>{x.hint}</Text>
+                );
+              })}
+            </View>
+          )}
+
+          {/* 詳細 2x2 grid */}
+          {current && (
+            <View style={wsx.detailGrid}>
+              {[
+                { l: '濕度', v: current.humidity,              u: '%',   bg: C.yellow },
+                { l: '風速', v: current.wind_speed.toFixed(1), u: 'm/s', bg: C.white },
+                { l: '氣壓', v: current.pressure,              u: 'hPa', bg: C.white },
+                { l: '體感', v: Math.round(current.feels_like),u: '°',   bg: C.yellow },
+              ].map((x, i) => (
+                <View key={i} style={[wsx.detailCard, { backgroundColor: x.bg }]}>
+                  <Text style={wsx.detailLab}>{x.l}</Text>
+                  <View style={wsx.detailValRow}>
+                    <Text style={wsx.detailVal}>{x.v}</Text>
+                    <Text style={wsx.detailUnit}>{x.u}</Text>
+                  </View>
                 </View>
               ))}
             </View>
           )}
 
-          <Text style={ws.credit}>— Powered by OpenWeatherMap —</Text>
-        </ScrollView>
-      )}
+          <Text style={wsx.credit}>— Powered by OpenWeatherMap —</Text>
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
+// WeatherScreen 樣式
+const wsx = StyleSheet.create({
+  heroWrap: { backgroundColor: PAL.yellow, paddingHorizontal: 24, paddingBottom: 40 },
+  backRow:  { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 2, zIndex: 30 },
+  backTxt:  { fontFamily: Fonts.sansBold, fontSize: 14, color: PAL.black },
+
+  heroRow:  { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  tempBig:  { fontFamily: Fonts.sansBlack, fontSize: 76, color: PAL.black, letterSpacing: -3, lineHeight: 82 },
+  tempDeg:  { fontFamily: Fonts.sansBlack, fontSize: 48, color: PAL.pink },
+  locText:  { fontFamily: Fonts.sansBold, fontSize: 16, color: PAL.black, marginTop: -4, letterSpacing: 1 },
+  condText: { fontFamily: Fonts.sansMed,  fontSize: 14, color: 'rgba(0,0,0,0.7)' },
+  dateText: { fontFamily: Fonts.sansBold, fontSize: 11, color: 'rgba(0,0,0,0.5)', letterSpacing: 2, marginTop: 4 },
+
+  greeting: { fontFamily: Fonts.sansBold, fontSize: 14, color: PAL.white, textAlign: 'center', lineHeight: 22, marginBottom: 6 },
+
+  // 卡片膠囊
+  card:      { borderRadius: 24, padding: 16 },
+  cardLabel: { fontFamily: Fonts.sansBlack, fontSize: 11, color: PAL.black, letterSpacing: 2, marginBottom: 10 },
+
+  // 逐時
+  hourlyRow: { flexDirection: 'row', gap: 18 },
+  hourItem:  { alignItems: 'center', minWidth: 50, gap: 4 },
+  hourTime:  { fontFamily: Fonts.sansBold, fontSize: 11, color: 'rgba(0,0,0,0.6)' },
+  hourTemp:  { fontFamily: Fonts.sansBlack, fontSize: 15, color: PAL.black },
+
+  // 多日
+  dayRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  dayName:  { fontFamily: Fonts.sansBold, fontSize: 13, color: PAL.black, width: 42 },
+  dayRainBox:{ flexDirection: 'row', alignItems: 'center', gap: 3, width: 46 },
+  dayRain:  { fontFamily: Fonts.sansBold, fontSize: 11, color: 'rgba(0,0,0,0.65)' },
+  dayLow:   { fontFamily: Fonts.sansBold, fontSize: 13, color: 'rgba(0,0,0,0.55)' },
+  dayBar:   { flex: 1, height: 4, backgroundColor: 'rgba(0,0,0,0.12)', borderRadius: 4, overflow: 'hidden', position: 'relative' },
+  dayBarFill:{ position: 'absolute', top: 0, bottom: 0, backgroundColor: PAL.blue, borderRadius: 4 },
+  dayHigh:  { fontFamily: Fonts.sansBlack, fontSize: 13, color: PAL.black, width: 28, textAlign: 'right' },
+
+  // 詳細 grid
+  detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  detailCard: { width: '47%', flexGrow: 1, borderRadius: 22, padding: 16, gap: 4 },
+  detailLab:  { fontFamily: Fonts.sansBold, fontSize: 11, color: 'rgba(0,0,0,0.55)', letterSpacing: 1.5 },
+  detailValRow:{ flexDirection: 'row', alignItems: 'baseline', gap: 3 },
+  detailVal:  { fontFamily: Fonts.sansBlack, fontSize: 26, color: PAL.black },
+  detailUnit: { fontFamily: Fonts.sansBold, fontSize: 11, color: 'rgba(0,0,0,0.55)' },
+
+  credit:   { fontFamily: Fonts.sansBold, fontSize: 10, color: 'rgba(255,255,255,0.5)', textAlign: 'center', marginTop: 12, letterSpacing: 2 },
+});
+
 // ─── Login Screen ─────────────────────────────────────────────────────────────
+// 黃:藍 = 1:2 → 波浪在 1/3 處；頭像中心在黃色中央
+const LOGIN_AVATAR_CY = Math.round(SH * 0.18);   // 頭像圓心（黃色 1/3 的中央）
+const LOGIN_WAVE_Y    = Math.round(SH * 0.33);   // 藍色起點（黃色佔 1/3）
 
-function LoginScreen({ navigation }) {
-  const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
-  const ws = makeWsStyles(colors);
-  const ls = makeLsStyles(colors);
-  const { login, register, isLoggedIn, user, logout } = useAuth();
-
-  const [isRegister, setIsRegister] = useState(false);
-  const [username, setUsername]     = useState('');
-  const [email, setEmail]           = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [password, setPassword]     = useState('');
-  const [error, setError]           = useState('');
-  const [loading, setLoading]       = useState(false);
-
-  const handleSubmit = async () => {
-    setError('');
-
-    if (!username || !password) { setError('請填寫帳號與密碼'); return; }
-    if (isRegister) {
-      if (!email) { setError('請填寫 Email'); return; }
-      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-        setError('帳號只能使用英文字母、數字和底線（_）'); return;
-      }
-      if (username.length < 3) { setError('帳號至少需要 3 個字元'); return; }
-      if (password.length < 8) { setError('密碼至少需要 8 個字元'); return; }
-    }
-
-    setLoading(true);
-    try {
-      if (isRegister) {
-        await register(username, email, password, displayName);
-      } else {
-        await login(username, password);
-      }
-      navigation.goBack();
-    } catch (e) {
-      if (!isRegister) {
-        setError('帳號或密碼錯誤');
-        return;
-      }
-      if (e.status === 422 && e.detail?.detail) {
-        const issues = Array.isArray(e.detail.detail) ? e.detail.detail : [];
-        const msgs = issues.map(i => {
-          const field = i.loc?.[i.loc.length - 1] ?? '';
-          if (field === 'username') return '帳號只能使用英文字母、數字和底線，且長度 3–32';
-          if (field === 'password') return '密碼至少需要 8 個字元';
-          if (field === 'email')    return 'Email 格式不正確';
-          return i.msg ?? '輸入格式有誤';
-        });
-        setError(msgs.join('\n') || '輸入格式有誤，請重新確認');
-      } else if (e.status === 409) {
-        setError('此帳號或 Email 已被使用');
-      } else {
-        setError('註冊失敗，請稍後再試');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ── 已登入狀態 ───────────────────────────────────────────────────────────
-  if (isLoggedIn) {
-    return (
-      <View style={[ws.container, { paddingTop: insets.top }]}>
-        <View style={ws.navRow}>
-          <TouchableOpacity style={ws.iconBtn} onPress={() => navigation.goBack()}>
-            <Text style={ws.backArrow}>‹</Text>
-          </TouchableOpacity>
-          <Text style={ws.navLabel}>ACCOUNT</Text>
-          <View style={{ width: 36 }} />
-        </View>
-        <View style={ls.loggedInWrap}>
-          <View style={ls.loggedInAvatar}>
-            <Text style={ls.loggedInAvatarText}>
-              {(user?.display_name || user?.username || '?')[0].toUpperCase()}
-            </Text>
-          </View>
-          <Text style={ls.loggedInName}>{user?.display_name || user?.username}</Text>
-          <Text style={ls.loggedInSub}>@{user?.username}</Text>
-          <TouchableOpacity style={ls.logoutBtn} onPress={logout} activeOpacity={0.8}>
-            <Text style={ls.logoutText}>登出</Text>
-          </TouchableOpacity>
-        </View>
+// 膠囊輸入框
+function InputPill({ label, ...props }) {
+  const C = usePAL();
+  return (
+    <View style={lss.inputWrap}>
+      <View style={[lss.pillShadow, { backgroundColor: C.blue }]} />
+      <View style={[lss.inputPill, { backgroundColor: C.white }]}>
+        <Text style={[lss.inputLabel, { color: C.black }]}>{label}</Text>
+        <View style={lss.inputDivider} />
+        <TextInput
+          style={[lss.inputField, { color: C.black }]}
+          placeholderTextColor="rgba(0,0,0,0.28)"
+          {...props}
+        />
       </View>
-    );
-  }
+    </View>
+  );
+}
 
+// ── 共用背景 wrapper（ScrollView 內：黃色佔位 + 波浪 + 返回鍵 + 頭像）────────────
+function AuthBg({ navigation, insets, children, avatarUri, onPickAvatar, showCamera }) {
+  const C          = usePAL();
+  const BLUE_TOP   = LOGIN_WAVE_Y;
+  const AVATAR_TOP = LOGIN_AVATAR_CY - AVATAR_SZ / 2;
   return (
     <KeyboardAvoidingView
-      style={[ws.container, { paddingTop: insets.top }]}
+      style={{ flex: 1, backgroundColor: C.blue }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={ws.navRow}>
-        <TouchableOpacity style={ws.iconBtn} onPress={() => navigation.goBack()}>
-          <Text style={ws.backArrow}>‹</Text>
-        </TouchableOpacity>
-        <Text style={ws.navLabel}>{isRegister ? 'SIGN UP' : 'SIGN IN'}</Text>
-        <View style={{ width: 36 }} />
-      </View>
+      <ScrollView
+        bounces={false}
+        overScrollMode="never"
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* 黃色區佔位 */}
+        <View style={{ height: BLUE_TOP, backgroundColor: C.yellow }} />
 
-      <ScrollView contentContainerStyle={ls.loginContent}>
-        {/* toggle */}
-        <View style={ls.loginToggle}>
-          {[{ l: '登入', v: false }, { l: '註冊', v: true }].map(btn => (
-            <TouchableOpacity
-              key={String(btn.v)}
-              style={[ls.toggleBtn, isRegister === btn.v && ls.toggleBtnActive]}
-              onPress={() => { setIsRegister(btn.v); setError(''); }}
-            >
-              <Text style={[ls.toggleText, isRegister === btn.v && ls.toggleTextActive]}>
-                {btn.l}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <Text style={ls.loginTitle}>{isRegister ? '建立帳號' : '歡迎回來'}</Text>
-        <Text style={ls.loginSub}>
-          {isRegister ? '開始記錄你的漫遊足跡' : '繼續探索台灣的角落'}
-        </Text>
-
-        {isRegister && (
-          <>
-            <View style={ls.field}>
-              <Text style={ls.fieldLabel}>DISPLAY NAME</Text>
-              <TextInput
-                style={ls.fieldInput}
-                value={displayName}
-                onChangeText={setDisplayName}
-                placeholder="你的漫遊代號"
-                placeholderTextColor={T.ink4}
-              />
-            </View>
-            <View style={ls.field}>
-              <Text style={ls.fieldLabel}>EMAIL</Text>
-              <TextInput
-                style={ls.fieldInput}
-                value={email}
-                onChangeText={setEmail}
-                placeholder="hello@vibetrip.app"
-                placeholderTextColor={T.ink4}
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-            </View>
-          </>
-        )}
-
-        <View style={ls.field}>
-          <Text style={ls.fieldLabel}>USERNAME</Text>
-          <TextInput
-            style={ls.fieldInput}
-            value={username}
-            onChangeText={setUsername}
-            placeholder="user_0808"
-            placeholderTextColor={T.ink4}
-            autoCapitalize="none"
-          />
-          {isRegister && (
-            <Text style={ls.fieldHint}>僅限英文字母、數字、底線（_），3–32 字元</Text>
-          )}
-        </View>
-
-        <View style={ls.field}>
-          <Text style={ls.fieldLabel}>PASSWORD</Text>
-          <TextInput
-            style={ls.fieldInput}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••"
-            placeholderTextColor={T.ink4}
-            secureTextEntry
-          />
-          {isRegister && (
-            <Text style={ls.fieldHint}>至少 8 個字元</Text>
-          )}
-        </View>
-
-        {!!error && <Text style={ls.errorText}>{error}</Text>}
-
-        <TouchableOpacity
-          style={[ls.submitBtn, loading && { opacity: 0.6 }]}
-          activeOpacity={0.8}
-          onPress={handleSubmit}
-          disabled={loading}
+        {/* 波浪：藍色 path 從 y=122 對應 BLUE_TOP */}
+        <View
+          pointerEvents="none"
+          style={{ position: 'absolute', left: 0, right: 0, top: BLUE_TOP - 120, height: 240, zIndex: 1 }}
         >
-          {loading
-            ? <ActivityIndicator color={T.paper} />
-            : <Text style={ls.submitText}>{isRegister ? '建立帳號 →' : '登入 →'}</Text>
-          }
-        </TouchableOpacity>
-
-        <View style={ls.dividerRow}>
-          <View style={ls.dividerLine} />
-          <Text style={ls.dividerText}>或</Text>
-          <View style={ls.dividerLine} />
+          <Svg width={SW} height={240}>
+            <Path d={`M 0,75 C ${SW*0.35},38 ${SW*0.65},158 ${SW},58 L ${SW},240 L 0,240 Z`} fill={C.white} />
+            <Path d={`M 0,122 C ${SW*0.35},85 ${SW*0.65},198 ${SW},108 L ${SW},240 L 0,240 Z`} fill={C.blue} />
+          </Svg>
         </View>
 
-        <TouchableOpacity style={ls.socialBtn} activeOpacity={0.7}
-          onPress={() => navigation.goBack()}>
-          <Text style={ls.socialBtnIcon}>○</Text>
-          <Text style={ls.socialBtnText}>訪客模式（不登入）</Text>
+        {/* 返回按鈕 */}
+        <TouchableOpacity
+          style={[lss.backRow, { position: 'absolute', top: insets.top + 10, left: 16, zIndex: 30 }]}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="chevron-back" size={18} color={PAL.black} />
+          <Text style={lss.backTxt}>返回</Text>
         </TouchableOpacity>
+
+        {/* 頭像 */}
+        <TouchableOpacity
+          style={[lss.avatarCircle, { top: AVATAR_TOP, zIndex: 20 }]}
+          onPress={showCamera ? onPickAvatar : undefined}
+          activeOpacity={showCamera ? 0.85 : 1}
+        >
+          {avatarUri
+            ? <Image source={{ uri: avatarUri }} style={lss.avatarImg} />
+            : <Image source={DEFAULT_AVATAR} style={lss.avatarImg} resizeMode="contain" />
+          }
+          {showCamera && (
+            <View style={lss.cameraIcon}>
+              <Ionicons name="camera" size={12} color={PAL.white} />
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* 頁面內容 */}
+        <View style={{ paddingTop: 40, paddingHorizontal: 20, paddingBottom: insets.bottom + 60, zIndex: 2 }}>
+          {children}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-// ─── Dynamic styles (profile main) ───────────────────────────────────────────
+// ─── LoginScreen（只登入）────────────────────────────────────────────────────
+function LoginScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
+  const { login, isLoggedIn, user, logout } = useAuth();
+  const C = usePAL();
 
-function makeStyles(C) {
-  return StyleSheet.create({
-    container:      { flex: 1, backgroundColor: C.paper },
-    profileContent: { paddingBottom: 50 },
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error,    setError]    = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const [avatarUri, setAvatarUri] = useState(null);
 
-    // ── Header（ISSUE 黃 tag + 旅人手帖 + 日期）─────────────────────────
-    headerRow: {
-      flexDirection: 'row', alignItems: 'flex-end',
-      paddingHorizontal: 24, paddingTop: 8, paddingBottom: 14,
-    },
-    issueTag:     { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 2 },
-    issueTagText: { color: C.ink, fontSize: 10, fontWeight: '700', letterSpacing: 1.2 },
-    pageTitle:    { fontSize: 22, fontWeight: '500', letterSpacing: 0.2, marginTop: 8, color: C.ink },
-    pageTitleHeavy: { fontWeight: '900', color: C.ink },
-    pageDate:     { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1.5, paddingBottom: 4 },
+  useEffect(() => {
+    AsyncStorage.getItem('vt_avatar_uri').then(uri => { if (uri) setAvatarUri(uri); });
+  }, []);
 
-    // ── Profile row（無圓角，純列）──────────────────────────────────────
-    profileRow: {
-      flexDirection: 'row', alignItems: 'center', gap: 12,
-      paddingHorizontal: 24, paddingVertical: 14,
-      borderBottomWidth: 1,
-    },
-    avatarSq:     { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
-    avatarText:   { color: '#fff', fontSize: 20, fontWeight: '900' },
-    profileName:  { fontSize: 15, fontWeight: '700' },
-    profileHandle:{ fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 0.8, marginTop: 2 },
-    editBtn:      { paddingVertical: 6, paddingHorizontal: 12, borderWidth: 1 },
-    editBtnText:  { fontSize: 11, fontWeight: '600' },
+  const pickAvatar = async () => {
+    const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1,1], quality: 0.85 });
+    if (!r.canceled) {
+      const uri = r.assets[0].uri;
+      setAvatarUri(uri);
+      await AsyncStorage.setItem('vt_avatar_uri', uri);
+    }
+  };
 
-    // ── Section（編號 + 標題 + 內容）─────────────────────────────────────
-    section: {
-      paddingHorizontal: 24, paddingVertical: 20,
-      borderBottomWidth: 1,
-    },
-    sectionHead:  { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 8 },
-    sectionNum:   { fontFamily: Fonts.latinMed, fontSize: 22, fontWeight: '700', letterSpacing: -0.6 },
-    sectionTitle: { fontSize: 13, fontWeight: '700' },
+  const handleLogin = async () => {
+    setError('');
+    if (!username || !password) { setError('請填寫帳號與密碼'); return; }
+    setLoading(true);
+    try {
+      await login(username, password);
+      navigation.goBack();
+    } catch {
+      setError('帳號或密碼錯誤');
+    } finally { setLoading(false); }
+  };
 
-    // ── Taste 區（pull quote + 高亮 mark）────────────────────────────────
-    tasteQuote:   { fontSize: 18, fontWeight: '500', lineHeight: 28, letterSpacing: 0.1 },
-    markText:     { color: '#fff', fontWeight: '700' },
-    roleTag: {
-      alignSelf: 'flex-start', marginTop: 12,
-      paddingHorizontal: 8, paddingVertical: 3,
-    },
-    roleTagText:  { color: C.ink, fontSize: 11, fontWeight: '700' },
-    tagsRow:      { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 },
-    tagText:      { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 0.8 },
-    tasteFoot:    { fontSize: 11, marginTop: 2 },
-    tasteCredit:  { fontSize: 11, marginTop: 12 },
+  // 已登入 → 顯示帳號資訊
+  if (isLoggedIn) {
+    return (
+      <AuthBg navigation={navigation} insets={insets} avatarUri={avatarUri} onPickAvatar={pickAvatar} showCamera>
+        <Text style={lss.logName}>{user?.display_name || user?.username}</Text>
+        <Text style={lss.logHandle}>@{user?.username}</Text>
+        <View style={[lss.btnWrap, { marginTop: 8 }]}>
+          <View style={[lss.pillShadow, { backgroundColor: C.pink }]} />
+          <TouchableOpacity style={[lss.actionPill, { backgroundColor: C.white }]} onPress={logout} activeOpacity={0.85}>
+            <Ionicons name="log-out-outline" size={18} color={C.black} />
+            <Text style={[lss.actionTxt, { color: C.black }]}>登出</Text>
+          </TouchableOpacity>
+        </View>
+      </AuthBg>
+    );
+  }
 
-    // ── 統計（4 欄無圓角）────────────────────────────────────────────────
-    statsGrid: { flexDirection: 'row', borderLeftWidth: 1 },
-    statCell: {
-      flex: 1, paddingHorizontal: 8, paddingVertical: 4,
-      borderRightWidth: 1,
-    },
-    statVal: { fontFamily: Fonts.latinMed, fontSize: 28, fontWeight: '700', letterSpacing: -1 },
-    statLab: { fontFamily: Fonts.mono, fontSize: 9, letterSpacing: 1.5, marginTop: 4 },
+  return (
+    <AuthBg navigation={navigation} insets={insets} avatarUri={avatarUri} showCamera={false}>
+      {/* 標題 */}
+      <Text style={lss.authTitle}>歡迎回來</Text>
 
-    // ── 登入 CTA（仍保留卡片感）──────────────────────────────────────────
-    loginCta: {
-      paddingVertical: 16, alignItems: 'center', gap: 4,
-    },
-    loginCtaTitle:   { fontSize: 15, fontWeight: '700', marginBottom: 2 },
-    loginCtaSub:     { fontSize: 12, textAlign: 'center', lineHeight: 18, marginBottom: 12 },
-    loginCtaBtn:     { paddingVertical: 10, paddingHorizontal: 28 },
-    loginCtaBtnText: { fontSize: 13, fontWeight: '700', letterSpacing: 0.5 },
+      {/* 輸入膠囊 */}
+      <InputPill label="帳號" value={username} onChangeText={setUsername} placeholder="username" autoCapitalize="none" />
+      <InputPill label="密碼" value={password} onChangeText={setPassword} placeholder="••••••••" secureTextEntry />
 
-    // ── 目錄列表（無外框、上下分隔線）────────────────────────────────────
-    menuList: { borderTopWidth: 1, marginBottom: 4 },
-    menuRow:  {
-      flexDirection: 'row', alignItems: 'center',
-      paddingVertical: 14, paddingHorizontal: 24,
-      borderBottomWidth: 1,
-    },
-    menuLabel: { flex: 1, fontSize: 15, fontWeight: '500' },
-    menuBadge: { fontFamily: Fonts.mono, fontSize: 11, letterSpacing: 0.8 },
+      {!!error && <View style={lss.errorPill}><Text style={lss.errorTxt}>{error}</Text></View>}
 
-    // ── 外觀設定 ─────────────────────────────────────────────────────────
-    settingLabel: { fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1.5, marginBottom: 10 },
+      {/* 登入按鈕 */}
+      <View style={lss.btnWrap}>
+        <View style={[lss.pillShadow, { backgroundColor: C.pink }]} />
+        <TouchableOpacity
+          style={[lss.actionPill, { backgroundColor: C.blue, opacity: loading ? 0.7 : 1 }]}
+          onPress={handleLogin} disabled={loading} activeOpacity={0.85}
+        >
+          {loading ? <ActivityIndicator color={C.white} /> : <Text style={[lss.actionTxt, { color: C.white }]}>登入 →</Text>}
+        </TouchableOpacity>
+      </View>
 
-    themeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    themeChip: {
-      flexDirection: 'row', alignItems: 'center', gap: 6,
-      paddingVertical: 6, paddingHorizontal: 10,
-    },
-    themeDot:      { width: 8, height: 8 },
-    themeChipText: { fontSize: 11, fontWeight: '500' },
+      {/* 去註冊 */}
+      <TouchableOpacity style={lss.switchRow} onPress={() => navigation.navigate('Register')} activeOpacity={0.7}>
+        <Text style={lss.switchTxt}>還沒有帳號？</Text>
+        <Text style={[lss.switchTxt, { color: C.yellow, fontFamily: Fonts.sansBlack }]}>立即註冊</Text>
+      </TouchableOpacity>
 
-    vibeStyleRow: { flexDirection: 'row', gap: 8 },
-    vibeStyleBtn: {
-      flex: 1, paddingVertical: 9, borderWidth: 1,
-      alignItems: 'center',
-    },
-    vibeStyleText: { fontSize: 12, fontWeight: '600' },
-
-    footer: {
-      fontFamily: Fonts.mono, fontSize: 9,
-      letterSpacing: 2.5, textAlign: 'center',
-      paddingTop: 24, paddingBottom: 16,
-    },
-  });
+      {/* 訪客模式 */}
+      <View style={lss.btnWrap}>
+        <View style={[lss.pillShadow, { backgroundColor: 'rgba(255,255,255,0.2)' }]} />
+        <TouchableOpacity
+          style={[lss.actionPill, { backgroundColor: 'rgba(255,255,255,0.12)', borderColor: 'rgba(255,255,255,0.4)' }]}
+          onPress={() => navigation.goBack()} activeOpacity={0.85}
+        >
+          <Text style={[lss.actionTxt, { color: 'rgba(255,255,255,0.75)' }]}>訪客模式（不登入）</Text>
+        </TouchableOpacity>
+      </View>
+    </AuthBg>
+  );
 }
 
-// ─── Dynamic styles for Weather sub-screen ────────────────────────────────────
+// ─── RegisterScreen（只註冊）────────────────────────────────────────────────
+function RegisterScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
+  const { register } = useAuth();
+  const C = usePAL();
 
-function makeWsStyles(C) {
-  return StyleSheet.create({
-    container:   { flex: 1, backgroundColor: C.paper },
-    navRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 8 },
-    navLabel:    { fontFamily: Fonts.mono, fontSize: 9, color: C.ink3, letterSpacing: 4 },
-    iconBtn:     { width: 36, height: 36, borderRadius: 18, backgroundColor: C.paper2, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
-    backArrow:   { fontSize: 24, color: C.ink2, marginTop: -2 },
+  const [dispName, setDispName] = useState('');
+  const [email,    setEmail]    = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error,    setError]    = useState('');
+  const [loading,  setLoading]  = useState(false);
 
-    weatherDate: { fontFamily: Fonts.mono, fontSize: 10, color: C.ink3, letterSpacing: 3 },
-    weatherHero: { flexDirection: 'row', alignItems: 'flex-start', gap: 14, marginTop: 6, marginBottom: 14 },
-    weatherTemp: { fontFamily: Fonts.latin, fontSize: 80, fontWeight: '300', color: C.ink, lineHeight: 80 },
-    weatherCond: { fontFamily: Fonts.serif, fontSize: 14, color: C.ink2, marginTop: 4 },
-    weatherQuote:{ fontFamily: Fonts.serif, fontSize: 15, color: C.tea, lineHeight: 22, marginBottom: 16 },
+  const handleRegister = async () => {
+    setError('');
+    if (!username || !password) { setError('請填寫帳號與密碼'); return; }
+    if (!email)                 { setError('請填寫 Email'); return; }
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) { setError('帳號只能使用英文、數字、底線'); return; }
+    if (username.length < 3)    { setError('帳號至少 3 個字元'); return; }
+    if (password.length < 8)    { setError('密碼至少 8 個字元'); return; }
+    setLoading(true);
+    try {
+      await register(username, email, password, dispName);
+      navigation.goBack();
+    } catch (e) {
+      if (e.status === 409) {
+        setError('此帳號或 Email 已被使用');
+      } else if (e.status === 422 && e.detail?.detail) {
+        const msgs = (Array.isArray(e.detail.detail) ? e.detail.detail : []).map(i => {
+          const f = i.loc?.[i.loc.length - 1] ?? '';
+          if (f === 'username') return '帳號格式有誤（3–32 字元）';
+          if (f === 'password') return '密碼至少 8 個字元';
+          if (f === 'email')    return 'Email 格式不正確';
+          return i.msg ?? '輸入格式有誤';
+        });
+        setError(msgs.join('\n') || '輸入格式有誤');
+      } else {
+        setError('註冊失敗，請稍後再試');
+      }
+    } finally { setLoading(false); }
+  };
 
-    card:        { backgroundColor: C.card, borderWidth: 1, borderColor: C.line, borderRadius: 20, padding: 14 },
-    cardLabel:   { fontFamily: Fonts.mono, fontSize: 9, color: C.ink3, letterSpacing: 3, marginBottom: 10 },
-    hourlyRow:   { flexDirection: 'row', gap: 18 },
-    hourItem:    { alignItems: 'center', minWidth: 44 },
-    hourTime:    { fontFamily: Fonts.mono, fontSize: 10, color: C.ink3, marginBottom: 6 },
-    hourTemp:    { fontFamily: Fonts.latin, fontSize: 15, fontWeight: '500', color: C.ink, marginTop: 4 },
+  return (
+    <AuthBg navigation={navigation} insets={insets} avatarUri={null} showCamera={false}>
+      {/* 標題 */}
+      <Text style={lss.authTitle}>建立帳號</Text>
 
-    dayRow:      { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
-    dayRowBorder:{ borderTopWidth: 1, borderTopColor: C.line, borderStyle: 'dashed' },
-    dayName:     { fontFamily: Fonts.serif, fontSize: 13, color: C.ink, width: 42 },
-    dayRain:     { fontFamily: Fonts.mono, fontSize: 10, color: C.indigo, width: 46 },
-    dayLow:      { fontFamily: Fonts.latin, fontSize: 13, color: C.ink3 },
-    dayBar:      { flex: 1, height: 4, backgroundColor: C.paper2, borderRadius: 4, overflow: 'hidden', position: 'relative' },
-    dayBarFill:  { position: 'absolute', top: 0, bottom: 0, backgroundColor: C.accent, borderRadius: 4 },
-    dayHigh:     { fontFamily: Fonts.latin, fontSize: 13, color: C.ink, fontWeight: '500', width: 26, textAlign: 'right' },
+      {/* 輸入膠囊 */}
+      <InputPill label="暱稱"  value={dispName} onChangeText={setDispName} placeholder="你的漫遊代號（選填）" />
+      <InputPill label="Email" value={email}    onChangeText={setEmail}    placeholder="hello@vibetrip.app" autoCapitalize="none" keyboardType="email-address" />
+      <InputPill label="帳號"  value={username} onChangeText={setUsername} placeholder="username（英文數字底線）" autoCapitalize="none" />
+      <InputPill label="密碼"  value={password} onChangeText={setPassword} placeholder="至少 8 個字元" secureTextEntry />
 
-    detailGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 12 },
-    detailCard:  { width: '47.5%', padding: 12 },
-    detailValRow:{ flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 4 },
-    detailVal:   { fontFamily: Fonts.latin, fontSize: 24, fontWeight: '500', color: C.ink },
-    detailUnit:  { fontFamily: Fonts.mono, fontSize: 10, color: C.ink3 },
-    detailHint:  { fontFamily: Fonts.serif, fontSize: 11, color: C.ink2, marginTop: 2 },
-    credit:      { fontFamily: Fonts.mono, fontSize: 10, color: C.ink4, textAlign: 'center', marginTop: 14, letterSpacing: 1.5 },
-  });
+      {!!error && <View style={lss.errorPill}><Text style={lss.errorTxt}>{error}</Text></View>}
+
+      {/* 建立帳號按鈕 */}
+      <View style={lss.btnWrap}>
+        <View style={[lss.pillShadow, { backgroundColor: C.pink }]} />
+        <TouchableOpacity
+          style={[lss.actionPill, { backgroundColor: C.blue, opacity: loading ? 0.7 : 1 }]}
+          onPress={handleRegister} disabled={loading} activeOpacity={0.85}
+        >
+          {loading ? <ActivityIndicator color={C.white} /> : <Text style={[lss.actionTxt, { color: C.white }]}>建立帳號 →</Text>}
+        </TouchableOpacity>
+      </View>
+
+      {/* 去登入 */}
+      <TouchableOpacity style={lss.switchRow} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+        <Text style={lss.switchTxt}>已有帳號？</Text>
+        <Text style={[lss.switchTxt, { color: C.yellow, fontFamily: Fonts.sansBlack }]}>返回登入</Text>
+      </TouchableOpacity>
+    </AuthBg>
+  );
 }
 
-// ─── Dynamic styles for MyCapsules / SavedSpots ───────────────────────────────
+// ─── ProfileMain 固定樣式（不依賴 theme）────────────────────────────────────
+const ps = StyleSheet.create({
+  blueSection: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    backgroundColor: PAL.blue,
+  },
 
-function makeCsStyles(C) {
-  return StyleSheet.create({
-    center:      { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10, paddingBottom: 60 },
-    emptyText:   { fontFamily: Fonts.serifBold, fontSize: 16, marginTop: 8 },
-    emptyHint:   { fontFamily: Fonts.serif, fontSize: 13, textAlign: 'center', maxWidth: 240 },
+  // 頭像
+  avatarOuter: {
+    position: 'absolute',
+    alignSelf: 'center',
+    width: AVATAR_SZ,
+    height: AVATAR_SZ,
+    borderRadius: AVATAR_SZ / 2,
+    backgroundColor: PAL.white,
+    borderWidth: BORDER,
+    borderColor: PAL.black,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+    ...HARD_SH,
+  },
+  avatarImg: {
+    width: AVATAR_SZ - 8,
+    height: AVATAR_SZ - 8,
+    borderRadius: (AVATAR_SZ - 8) / 2,
+  },
+  cameraIcon: {
+    position: 'absolute',
+    bottom: 8, right: 8,
+    width: 26, height: 26, borderRadius: 13,
+    backgroundColor: PAL.blue,
+    borderWidth: 2, borderColor: PAL.white,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
-    card:        { backgroundColor: C.card, borderWidth: 1, borderColor: C.line, borderRadius: 18, overflow: 'hidden', marginBottom: 14 },
-    cardImage:   { width: '100%', height: 180, resizeMode: 'cover' },
-    cardImagePlaceholder: { width: '100%', height: 120, alignItems: 'center', justifyContent: 'center' },
-    cardBody:    { padding: 14 },
-    cardNote:    { fontFamily: Fonts.serif, fontSize: 14, lineHeight: 21, marginBottom: 10 },
-    cardMeta:    { flexDirection: 'row', alignItems: 'center', gap: 5 },
-    cardMetaText:{ fontFamily: Fonts.mono, fontSize: 10 },
+  // 名字區
+  nameBlock: { alignItems: 'center', paddingHorizontal: 24, marginBottom: 16 },
+  displayName: { fontFamily: Fonts.sansBlack, fontSize: 22, color: PAL.white, letterSpacing: 0.5 },
+  handle:      { fontFamily: Fonts.sansMed,   fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 4, letterSpacing: 1 },
 
-    authorRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
-    avatar:      { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-    avatarText:  { fontFamily: Fonts.serifBold, fontSize: 14 },
-    authorName:  { fontFamily: Fonts.serifBold, fontSize: 13 },
-    authorTime:  { fontFamily: Fonts.mono, fontSize: 10, marginTop: 1 },
-  });
-}
+  // 統計 pills
+  statsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingHorizontal: 20,
+    marginBottom: 20,
+    justifyContent: 'center',
+  },
+  statPill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderRadius: PILL_R,
+    borderWidth: BORDER,
+    borderColor: PAL.black,
+    ...HARD_SH,
+  },
+  statVal: { fontFamily: Fonts.sansBlack, fontSize: 22, letterSpacing: -0.5 },
+  statLab: { fontFamily: Fonts.sansMed,   fontSize: 10, marginTop: 2, letterSpacing: 1 },
 
-// ─── Dynamic styles for Login sub-screen ─────────────────────────────────────
+  // 未登入 CTA
+  loginPill: {
+    alignSelf: 'center',
+    paddingVertical: 13,
+    paddingHorizontal: 36,
+    backgroundColor: PAL.pink,
+    borderRadius: PILL_R,
+    borderWidth: BORDER,
+    borderColor: PAL.black,
+    marginBottom: 20,
+    ...HARD_SH,
+  },
+  loginPillTxt: { fontFamily: Fonts.sansBlack, fontSize: 15, color: PAL.black, letterSpacing: 1 },
 
-function makeLsStyles(C) {
-  return StyleSheet.create({
-    loginContent: { padding: 20, paddingBottom: 40 },
-    loginToggle:  { flexDirection: 'row', backgroundColor: C.paper2, borderRadius: 100, padding: 4, marginBottom: 28 },
-    toggleBtn:    { flex: 1, paddingVertical: 9, borderRadius: 100, alignItems: 'center' },
-    toggleBtnActive: { backgroundColor: C.ink },
-    toggleText:      { fontFamily: Fonts.serif, fontSize: 13, color: C.ink2 },
-    toggleTextActive:{ color: C.paper },
-    loginTitle:   { fontFamily: Fonts.serifBold, fontSize: 24, color: C.ink, marginBottom: 6 },
-    loginSub:     { fontFamily: Fonts.serif, fontSize: 13, color: C.ink2, marginBottom: 28, lineHeight: 20 },
+  // 選單 grid
+  menuGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 14,
+    paddingHorizontal: 20,
+    marginBottom: 24,
+  },
+  menuCellWrap: { width: '46%', flex: 1, position: 'relative' },
+  menuCellShadow: {
+    position: 'absolute',
+    width: '100%', height: '100%',
+    borderRadius: 20,
+    top: 5, left: 5,
+  },
+  menuCell: {
+    borderRadius: 20,
+    borderWidth: BORDER,
+    borderColor: PAL.black,
+    padding: 18,
+    gap: 6,
+    minHeight: 110,
+    justifyContent: 'space-between',
+  },
+  menuCellLabel: { fontFamily: Fonts.sansBlack, fontSize: 14 },
+  menuCellBadge: { fontFamily: Fonts.sansMed,   fontSize: 12 },
 
-    field:        { marginBottom: 16 },
-    fieldLabel:   { fontFamily: Fonts.mono, fontSize: 9, color: C.ink3, letterSpacing: 3, marginBottom: 7 },
-    fieldInput:   { borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, fontFamily: Fonts.serif, fontSize: 14, color: C.ink, backgroundColor: C.card },
-    fieldHint:    { fontFamily: Fonts.mono, fontSize: 9, color: C.ink4, marginTop: 5, letterSpacing: 0.5 },
+  // ── 選單橫膠囊列 ─────────────────────────────────────────────────────
+  menuList: {
+    paddingHorizontal: 20,
+    gap: 12,
+    marginBottom: 24,
+  },
+  menuRowWrap: { position: 'relative' },
+  menuRowShadow: {
+    position: 'absolute', width: '100%', height: '100%',
+    borderRadius: PILL_R, top: 4, left: 4,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    borderRadius: PILL_R,
+    borderWidth: BORDER,
+    borderColor: PAL.black,
+  },
+  menuRowLabel: { fontFamily: Fonts.sansBlack, fontSize: 15, flex: 1 },
+  menuRowBadge: { fontFamily: Fonts.sansMed, fontSize: 12 },
 
-    submitBtn:    { backgroundColor: C.ink, borderRadius: 100, paddingVertical: 15, alignItems: 'center', marginTop: 4, marginBottom: 24 },
-    submitText:   { fontFamily: Fonts.serifBold, fontSize: 15, color: C.paper, letterSpacing: 1 },
+  footer: {
+    fontFamily: Fonts.sansBold,
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.4)',
+    textAlign: 'center',
+    letterSpacing: 3,
+    paddingBottom: 16,
+  },
+});
 
-    dividerRow:   { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
-    dividerLine:  { flex: 1, height: 1, backgroundColor: C.line },
-    dividerText:  { fontFamily: Fonts.serif, fontSize: 12, color: C.ink3 },
+// 已移除舊的 makeStyles / makeWsStyles / makeCsStyles（編輯雜誌風）
+// 各子畫面樣式現在用獨立的 PAL 卡通配色（ps / wsx / subStyles / lss）
 
-    socialBtn:    { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: C.line, borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 10, backgroundColor: C.card },
-    socialBtnIcon:{ fontFamily: Fonts.serif, fontSize: 16, width: 22, textAlign: 'center', color: C.ink },
-    socialBtnText:{ fontFamily: Fonts.serif, fontSize: 14, color: C.ink },
+// ─── LoginScreen 固定樣式 ─────────────────────────────────────────────────────
+const lss = StyleSheet.create({
+  blueSection: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: PAL.blue },
 
-    errorText:    { fontFamily: Fonts.serif, fontSize: 13, color: C.stamp, marginBottom: 12, textAlign: 'center' },
+  // 頭像圓
+  avatarCircle: {
+    position: 'absolute',
+    alignSelf: 'center',
+    width: AVATAR_SZ, height: AVATAR_SZ,
+    borderRadius: AVATAR_SZ / 2,
+    backgroundColor: PAL.white,
+    borderWidth: BORDER, borderColor: PAL.black,
+    overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
+    zIndex: 20,
+    ...HARD_SH,
+  },
+  avatarImg: { width: AVATAR_SZ - 8, height: AVATAR_SZ - 8, borderRadius: (AVATAR_SZ - 8) / 2 },
+  cameraIcon: {
+    position: 'absolute', bottom: 8, right: 8,
+    width: 24, height: 24, borderRadius: 12,
+    backgroundColor: PAL.blue, borderWidth: 2, borderColor: PAL.white,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
-    loggedInWrap:      { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 60 },
-    loggedInAvatar:    { width: 80, height: 80, borderRadius: 40, backgroundColor: C.accent, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
-    loggedInAvatarText:{ fontFamily: Fonts.serifBold, fontSize: 30, color: C.paper },
-    loggedInName:      { fontFamily: Fonts.serifBold, fontSize: 20, color: C.ink, marginBottom: 4 },
-    loggedInSub:       { fontFamily: Fonts.mono, fontSize: 12, color: C.ink3, letterSpacing: 2, marginBottom: 32 },
-    logoutBtn:         { borderWidth: 1, borderColor: C.line, borderRadius: 100, paddingVertical: 10, paddingHorizontal: 28 },
-    logoutText:        { fontFamily: Fonts.serif, fontSize: 14, color: C.ink2 },
-  });
-}
+  // 返回列
+  backRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 2, left: 16,
+  },
+  backTxt: { fontFamily: Fonts.sansBold, fontSize: 14, color: PAL.black },
+
+  // 登入/註冊 segmented pill
+  segWrap: { alignItems: 'center', marginBottom: 16 },
+  segPill: {
+    flexDirection: 'row',
+    backgroundColor: PAL.white,
+    borderRadius: PILL_R, borderWidth: BORDER, borderColor: PAL.black,
+    padding: 4, ...HARD_SH,
+  },
+  segBtn:       { paddingVertical: 8, paddingHorizontal: 26, borderRadius: PILL_R },
+  segBtnActive: { backgroundColor: PAL.blue },
+  segTxt:       { fontFamily: Fonts.sansBold, fontSize: 13, color: PAL.black },
+  segTxtActive: { color: PAL.white },
+
+  // 輸入膠囊
+  inputWrap: { position: 'relative', marginBottom: 11 },
+  pillShadow: {
+    position: 'absolute', width: '100%', height: '100%',
+    borderRadius: PILL_R, top: 4, left: 4,
+  },
+  inputPill: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: PAL.white,
+    borderRadius: PILL_R, borderWidth: BORDER, borderColor: PAL.black,
+    paddingHorizontal: 20, paddingVertical: 14,
+    gap: 12,
+  },
+  inputLabel:   { fontFamily: Fonts.sansBlack, fontSize: 13, color: PAL.black, width: 38 },
+  inputDivider: { width: 1.5, height: 18, backgroundColor: 'rgba(0,0,0,0.15)' },
+  inputField:   { flex: 1, fontFamily: Fonts.sansMed, fontSize: 14, color: PAL.black, paddingVertical: 0 },
+
+  // 錯誤
+  errorPill: {
+    backgroundColor: 'rgba(255,80,80,0.15)',
+    borderRadius: PILL_R, borderWidth: 1.5, borderColor: 'rgba(255,80,80,0.4)',
+    paddingVertical: 8, paddingHorizontal: 16, marginBottom: 10, alignItems: 'center',
+  },
+  errorTxt: { fontFamily: Fonts.sansMed, fontSize: 12, color: '#FF5050', textAlign: 'center' },
+
+  // 通用動作膠囊（Submit / Guest / Logout）
+  btnWrap:   { position: 'relative', marginBottom: 10 },
+  actionPill: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    paddingVertical: 15,
+    borderRadius: PILL_R, borderWidth: BORDER, borderColor: PAL.black,
+  },
+  actionTxt: { fontFamily: Fonts.sansBlack, fontSize: 15, letterSpacing: 0.5 },
+
+  // 已登入
+  logName:   { fontFamily: Fonts.sansBlack, fontSize: 22, color: PAL.white, textAlign: 'center', marginBottom: 4 },
+  logHandle: { fontFamily: Fonts.sansMed,   fontSize: 12, color: 'rgba(255,255,255,0.65)', textAlign: 'center', letterSpacing: 1, marginBottom: 24 },
+
+  // 頁面標題
+  authTitle: {
+    fontFamily: Fonts.sansBlack,
+    fontSize: 24,
+    color: PAL.white,
+    textAlign: 'center',
+    marginBottom: 20,
+    letterSpacing: 0.5,
+  },
+
+  // 底部切換連結（登入↔註冊）
+  switchRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 6,
+    marginBottom: 12,
+  },
+  switchTxt: {
+    fontFamily: Fonts.sansMed,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.65)',
+  },
+});

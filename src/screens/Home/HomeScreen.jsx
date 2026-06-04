@@ -1,15 +1,33 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  View, Text, ScrollView, Image, Animated, Dimensions, StyleSheet, Pressable, TouchableOpacity,
+  View, Text, ScrollView, Image, Animated, Dimensions, StyleSheet, Pressable, TouchableOpacity, Easing,
 } from 'react-native';
 import Svg, { Circle as SvgCircle, Path } from 'react-native-svg';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { VIBES } from '../../data/vibeData';
+import useWeather, { owmIconToKind } from '../../hooks/useWeather';
+import { useAuth } from '../../context/AuthContext';
+import { usePAL } from '../../context/DimContext';
+
+// 天氣動畫圖幀（亮色 + dim 版）
+// 天氣動畫圖（始終保持鮮豔色）
+const WEATHER_FRAMES = {
+  sunny:  [require('../../../assets/sun1.png'),  require('../../../assets/sun2.png')],
+  partly: [require('../../../assets/sun1.png'),  require('../../../assets/sun2.png')],
+  cloudy: [require('../../../assets/sun1.png'),  require('../../../assets/sun2.png')],
+  night:  [require('../../../assets/sun1.png'),  require('../../../assets/sun2.png')],
+  rain:   [require('../../../assets/rain1.png'), require('../../../assets/rain2.png'),
+           require('../../../assets/rain3.png'), require('../../../assets/rain4.png')],
+};
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
+// 預設亮色（fallback；元件內會用 usePAL() 取真實當前色票）
 const PAL = {
   yellow: '#E2E146',
   pink:   '#FF6FA8',
@@ -18,26 +36,42 @@ const PAL = {
   white:  '#FFFFFF',
 };
 
-// ─── 雲狀對話框 ──────────────────────────────────────────────
+// ─── 不規則雲狀對話框（手繪感） ──────────────────────────────
+// 用 SVG Path 把多個大小不一的弧連起來，做成不對稱的有機形狀
+// 同時保留底下幾顆小圓 = 思考泡泡尾巴
 function CloudBubble({ size, color = PAL.pink }) {
+  // viewBox 100×110，路徑刻意做不對稱：右上比左上凸、左下比右下大
+  // 每一個 Q 都是一個「凸起」，半徑刻意不同
+  const cloudPath = `
+    M 18,55
+    Q 8,40 18,28
+    Q 22,12 38,18
+    Q 48,2 62,12
+    Q 78,5 84,22
+    Q 98,28 90,42
+    Q 100,55 88,64
+    Q 96,80 78,80
+    Q 70,95 56,84
+    Q 40,94 32,80
+    Q 16,82 18,68
+    Q 6,62 18,55
+    Z
+  `.replace(/\s+/g, ' ').trim();
+
   return (
-    <Svg width={size} height={size * 1.095} viewBox="-3 -3 108 118">
-      <SvgCircle cx="50" cy="48" r="34" fill={color} />
-      <SvgCircle cx="30" cy="28" r="18" fill={color} />
-      <SvgCircle cx="55" cy="22" r="20" fill={color} />
-      <SvgCircle cx="78" cy="30" r="16" fill={color} />
-      <SvgCircle cx="15" cy="52" r="15" fill={color} />
-      <SvgCircle cx="86" cy="50" r="15" fill={color} />
-      <SvgCircle cx="22" cy="76" r="16" fill={color} />
-      <SvgCircle cx="50" cy="82" r="18" fill={color} />
-      <SvgCircle cx="78" cy="76" r="15" fill={color} />
-      <SvgCircle cx="78" cy="100" r="5" fill={color} />
+    <Svg width={size} height={size * 1.1} viewBox="-4 -4 108 120">
+      {/* 主雲體 */}
+      <Path d={cloudPath} fill={color} />
+      {/* 思考泡泡尾巴（兩顆小圓往左下）*/}
+      <SvgCircle cx="28" cy="100" r="6" fill={color} />
+      <SvgCircle cx="18" cy="110" r="3" fill={color} />
     </Svg>
   );
 }
 
 // ─── 波浪背景 ──────────────────────────────
-function WavyBackground({ w, h }) {
+function WavyBackground({ w, h, colors }) {
+  const C = colors || PAL;
   // 💡 【註解：波浪溢出高度】 這裡的 offset 控制波浪往上「吃」進黃色區域的高度
   // 如果妳覺得波浪太高蓋到動物，可以把這裡調小 (例如 80 或 100)
   const offset = 120; 
@@ -49,29 +83,107 @@ function WavyBackground({ w, h }) {
 
   return (
     <Svg width={w} height={totalH} style={[StyleSheet.absoluteFillObject, { top: -offset }]}>
-      <Path d={whiteWave} fill={PAL.white} />
-      <Path d={blueWave} fill={PAL.blue} />
+      <Path d={whiteWave} fill={C.white} />
+      <Path d={blueWave} fill={C.blue} />
     </Svg>
+  );
+}
+
+// vibe 動畫圖（13 隻動物 × 2 幀）
+const VIBE_FRAMES = [
+  [require('../../../assets/vibe1.png'),  require('../../../assets/vibe2.png')],
+  [require('../../../assets/vibe3.png'),  require('../../../assets/vibe4.png')],
+  [require('../../../assets/vibe5.png'),  require('../../../assets/vibe6.png')],
+  [require('../../../assets/vibe7.png'),  require('../../../assets/vibe8.png')],
+  [require('../../../assets/vibe9.png'),  require('../../../assets/vibe10.png')],
+  [require('../../../assets/vibe11.png'), require('../../../assets/vibe12.png')],
+  [require('../../../assets/vibe13.png'), require('../../../assets/vibe13.png')],
+];
+
+// ─── 飄浮愛心（摸動物時噴出來的）──────────────────────────────────────────
+function Heart({ startX, drift, size, delay, color }) {
+  const v = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    // 用 setTimeout 強制延遲，避免 native driver 的 delay 邊界問題
+    const t = setTimeout(() => {
+      Animated.timing(v, {
+        toValue: 1,
+        duration: 1100,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }).start();
+    }, delay);
+    return () => clearTimeout(t);
+  }, []);
+
+  // 從頭頂往上飛、左右飄、放大後縮小、淡出
+  const translateY = v.interpolate({ inputRange: [0, 1], outputRange: [0, -180] });
+  const translateX = v.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, drift, drift * 0.6] });
+  const scale      = v.interpolate({ inputRange: [0, 0.25, 1], outputRange: [0.4, 1.3, 0.7] });
+  const opacity    = v.interpolate({ inputRange: [0, 0.15, 0.75, 1], outputRange: [0, 1, 1, 0] });
+
+  // 起點在動物頭頂位置（stageWrap 中央往上一點），愛心會往上短距離飛
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={{
+        position: 'absolute',
+        left: '50%',
+        top: '28%',                    // 動物頭頂位置（不是 stageWrap 頂端）
+        width: size,
+        height: size,
+        marginLeft: -size / 2 + startX,
+        opacity,
+        zIndex: 999,
+        transform: [
+          { translateX },
+          { translateY },
+          { scale },
+        ],
+      }}
+    >
+      <Svg width={size} height={size} viewBox="0 0 24 24">
+        <Path
+          d="M12 21s-7-4.5-9.5-9.5C1 8 3 4.5 7 4.5c2.5 0 4 1.5 5 3 1-1.5 2.5-3 5-3 4 0 6 3.5 4.5 7C19 16.5 12 21 12 21z"
+          fill={color}
+        />
+      </Svg>
+    </Animated.View>
   );
 }
 
 export default function HomeScreen() {
   const navigation = useNavigation();
   const insets     = useSafeAreaInsets();
+  const C          = usePAL();                  // 當前色票（亮 or dim）
   const [activeIdx, setActiveIdx] = useState(0);
   const [frameIdx,  setFrameIdx]  = useState(0);
-  const [blueH, setBlueH] = useState(0); 
+  const [weatherFrame, setWeatherFrame] = useState(0);
+  const [avatarUri, setAvatarUri] = useState(null);
+  const { isLoggedIn } = useAuth();
+
+  // 登入後讀本機儲存的頭像
+  useEffect(() => {
+    if (!isLoggedIn) { setAvatarUri(null); return; }
+    AsyncStorage.getItem('vt_avatar_uri').then(uri => { if (uri) setAvatarUri(uri); });
+  }, [isLoggedIn]);
+  const [blueH, setBlueH] = useState(0);
   const scrollRef  = useRef(null);
 
-  const FRAMES = [
-    [require('../../../assets/vibe1.png'),  require('../../../assets/vibe2.png')],
-    [require('../../../assets/vibe3.png'),  require('../../../assets/vibe4.png')],
-    [require('../../../assets/vibe5.png'),  require('../../../assets/vibe6.png')],
-    [require('../../../assets/vibe7.png'),  require('../../../assets/vibe8.png')],
-    [require('../../../assets/vibe9.png'),  require('../../../assets/vibe10.png')],
-    [require('../../../assets/vibe11.png'), require('../../../assets/vibe12.png')],
-    [require('../../../assets/vibe13.png'), require('../../../assets/vibe13.png')],
-  ];
+  // 天氣資料 → 動畫幀（圖片始終鮮豔，讓角色在霧面背景上像貼紙跳出來）
+  const { current } = useWeather();
+  const weatherKind = current ? owmIconToKind(current.icon) : 'partly';
+  const weatherImgs = WEATHER_FRAMES[weatherKind] || WEATHER_FRAMES.partly;
+  const FRAMES = VIBE_FRAMES;
+
+  // 天氣動畫切換（每 500ms 換一幀）
+  useEffect(() => {
+    const t = setInterval(
+      () => setWeatherFrame(p => (p + 1) % weatherImgs.length),
+      500
+    );
+    return () => clearInterval(t);
+  }, [weatherImgs.length]);
 
   const now  = new Date();
   const hhmm = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -121,6 +233,37 @@ export default function HomeScreen() {
   }, [swing]);
   const swingRot = swing.interpolate({ inputRange: [-1, 1], outputRange: ['-6deg', '6deg'] });
 
+  // ── 摸動物：scale 縮放 + 飄愛心 + 觸覺回饋 ─────────────────────────────
+  const petScale = useRef(new Animated.Value(1)).current;
+  const [hearts, setHearts] = useState([]);   // [{ id, x, y }]
+  const heartIdRef = useRef(0);
+
+  const petAnimal = useCallback(() => {
+    // 1) 觸覺：輕度震動（try/catch 避免在某些模擬器上拋例外阻塞後續）
+    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch {}
+
+    // 2) 動物縮放 1 → 1.12 → 1
+    Animated.sequence([
+      Animated.timing(petScale, { toValue: 1.12, duration: 120, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+      Animated.spring(petScale,  { toValue: 1,    friction: 4, tension: 180, useNativeDriver: true }),
+    ]).start();
+
+    // 3) 噴出 3 顆隨機位置愛心
+    const newHearts = [0, 1, 2].map(() => ({
+      id:     heartIdRef.current++,
+      startX: (Math.random() - 0.5) * 80,   // 起點 X 偏移 -40 ~ +40
+      drift:  (Math.random() - 0.5) * 50,   // 上升時的左右飄
+      size:   22 + Math.random() * 14,      // 22~36（放大讓更明顯）
+      delay:  Math.random() * 150,          // 0~150ms 錯開
+    }));
+    setHearts(prev => [...prev, ...newHearts]);
+
+    // 4) 1.3 秒後移除（動畫結束）
+    setTimeout(() => {
+      setHearts(prev => prev.filter(h => !newHearts.find(n => n.id === h.id)));
+    }, 1400);
+  }, [petScale]);
+
   useEffect(() => {
     FRAMES.flat().forEach(src => { try { Image.resolveAssetSource(src); } catch {} });
   }, []);
@@ -146,10 +289,10 @@ export default function HomeScreen() {
           這個圖層專門用來畫背景，絕對不會干擾到文字排版
       ========================================== */}
       <View style={styles.bgLayer}>
-        <View style={styles.bgYellow} />
+        <View style={[styles.bgYellow, { backgroundColor: C.yellow }]} />
         {/* onLayout 會把這一塊的高度存給 blueH，用來畫底下的波浪 */}
-        <View style={styles.bgBlue} onLayout={e => setBlueH(e.nativeEvent.layout.height)}>
-          {blueH > 0 && <WavyBackground w={SCREEN_W} h={blueH} />}
+        <View style={[styles.bgBlue, { backgroundColor: C.blue }]} onLayout={e => setBlueH(e.nativeEvent.layout.height)}>
+          {blueH > 0 && <WavyBackground w={SCREEN_W} h={blueH} colors={C} />}
         </View>
       </View>
 
@@ -163,10 +306,37 @@ export default function HomeScreen() {
         <View style={[styles.topSection, { paddingTop: insets.top + 8 }]}>
           
           <View style={styles.statusBar}>
-            <View style={styles.statusLeft}>
-              <Animated.View style={[styles.pulseDot, { opacity: pulse }]} />
-              <Text style={styles.statusText}>{hhmm} · {dateStr}</Text>
-            </View>
+            {/* 左：天氣動畫（直接圖，無圓框）*/}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Profile', { screen: 'Weather' })}
+              activeOpacity={0.85}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Image
+                source={weatherImgs[weatherFrame]}
+                style={styles.weatherImg}
+                resizeMode="contain"
+                fadeDuration={0}
+              />
+            </TouchableOpacity>
+
+            {/* 右：圓形頭像/登入 icon；登入後若有 avatar 就顯示，否則顯示預設 person icon */}
+            <TouchableOpacity
+              style={styles.circleBtn}
+              onPress={() => navigation.navigate('Profile')}
+              activeOpacity={0.85}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              {isLoggedIn && avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={styles.circleInner} />
+              ) : (
+                <Image
+                  source={require('../../../assets/vibe3.png')}
+                  style={{ width: 48, height: 48 }}
+                  resizeMode="contain"
+                />
+              )}
+            </TouchableOpacity>
           </View>
 
           {/* 舞台 (對話框與動物) */}
@@ -176,19 +346,40 @@ export default function HomeScreen() {
               {
                 transform: [
                   { translateY: floatY },
-                  ...(activeIdx === 6 ? [{ rotate: swingRot }] : []), // 把搖擺動畫加回來了！
+                  ...(activeIdx === 6 ? [{ rotate: swingRot }] : []),
                 ],
               },
             ]}>
               <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-                <CloudBubble size={BUBBLE_SIZE} />
+                <CloudBubble size={BUBBLE_SIZE} color={C.pink} />
               </View>
-              <Image
-                source={FRAMES[activeIdx][frameIdx]}
-                style={styles.animal}
-                resizeMode="contain"
-                fadeDuration={0}
-              />
+
+              {/* 動物本體：可摸（縮放 + 噴愛心 + 觸覺）*/}
+              <Pressable
+                onPress={petAnimal}
+                hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                style={styles.animalWrap}
+              >
+                <Animated.View style={{ transform: [{ scale: petScale }] }}>
+                  <Image
+                    source={FRAMES[activeIdx][0]}
+                    style={[styles.animal, { opacity: frameIdx === 0 ? 1 : 0 }]}
+                    resizeMode="contain"
+                    fadeDuration={0}
+                  />
+                  <Image
+                    source={FRAMES[activeIdx][1]}
+                    style={[styles.animal, { position: 'absolute', opacity: frameIdx === 1 ? 1 : 0 }]}
+                    resizeMode="contain"
+                    fadeDuration={0}
+                  />
+                </Animated.View>
+              </Pressable>
+
+              {/* 飄浮愛心層（在動物上方，pointerEvents:none 不擋觸控）*/}
+              {hearts.map(h => (
+                <Heart key={h.id} startX={h.startX} drift={h.drift} size={h.size} delay={h.delay} color={C.white} />
+              ))}
             </Animated.View>
           </View>
         </View>
@@ -271,17 +462,28 @@ const styles = StyleSheet.create({
   // 💡 flex: 1 代表上半部佔滿剩餘空間，往下推擠下半部
   topSection: { flex: 1 },
   
-  statusBar: { flexDirection: 'row', paddingHorizontal: 18, paddingBottom: 8 },
+  statusBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 18, paddingBottom: 8 },
   statusLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  profileBtn: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
+  logoImg:    { width: 48, height: 48 },
   pulseDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: PAL.pink },
+  weatherImg: { width: 52, height: 52 },
+  circleBtn: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: PAL.white,
+    alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  circleInner: { width: 64, height: 64, borderRadius: 32, resizeMode: 'cover' },
   statusText: { fontFamily: 'NotoSansTC_700Bold', fontSize: 14, color: PAL.black, letterSpacing: 0.5 },
 
-  // 舞台 (對話框+動物)：利用 flex 的特性，讓它在「上半部剩餘空間」中絕對置中
-  stageHolder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  // 舞台 (對話框+動物)：往上推一點，讓對話框完全在黃色區內
+  stageHolder: { flex: 1, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 10 },
   stageWrap: { width: BUBBLE_SIZE, height: BUBBLE_SIZE * 1.095, alignItems: 'center', justifyContent: 'center' },
   
   // 💡 【註解：動物微調】 marginTop 可以控制動物要在對話框裡的哪個高度
-  animal: { width: ANIMAL_SIZE, height: ANIMAL_SIZE, marginTop: -BUBBLE_SIZE * 0.05, zIndex: 2 },
+  animalWrap: { alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  animal: { width: ANIMAL_SIZE, height: ANIMAL_SIZE, marginTop: -BUBBLE_SIZE * 0.05 },
   
   // ─── 下半部 ───
   // 💡 【註解：防護罩】 paddingBottom: 130 這是最重要的「防護罩」！

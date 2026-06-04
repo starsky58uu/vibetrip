@@ -1,16 +1,25 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useTheme } from '../context/ThemeContext';
 import HomeScreen    from '../screens/Home/HomeScreen';
 import TripScreen    from '../screens/Trip/TripScreen';
 import ExploreScreen from '../screens/Explore/ExploreScreen';
 import ProfileScreen from '../screens/Profile/ProfileScreen';
+import { Fonts } from '../constants/theme';
+import { usePAL } from '../context/DimContext';
 
 const Tab = createBottomTabNavigator();
+
+const PAL = {
+  yellow: '#E2E146',
+  pink:   '#FF6FA8',
+  blue:   '#2E45B0',
+  black:  '#000000',
+  white:  '#FFFFFF',
+};
 
 const TABS = [
   { name: 'Home',    zh: '主頁', icon: 'home-outline',   iconActive: 'home'   },
@@ -21,23 +30,56 @@ const TABS = [
 
 function TabBar({ state, navigation }) {
   const insets = useSafeAreaInsets();
-  const { colors } = useTheme();
+  const C      = usePAL();
 
-  const TAB_COLORS = [colors.cRed, colors.cYellow, colors.cBlue, colors.cGreen];
+  // 粉色指示線的位置（依當前 tab index 滑動）
+  const indicatorAnim = useRef(new Animated.Value(state.index)).current;
+  useEffect(() => {
+    Animated.spring(indicatorAnim, {
+      toValue: state.index,
+      useNativeDriver: true,
+      friction: 8,
+      tension: 80,
+    }).start();
+  }, [state.index]);
+
+  // 每個 tab 的寬度 = (88% 螢幕 - 內距) / 4
+  const tabCount = state.routes.length;
+  const indicatorTranslateX = indicatorAnim.interpolate({
+    inputRange: state.routes.map((_, i) => i),
+    outputRange: state.routes.map((_, i) => i * (100 / tabCount)),
+  });
 
   return (
     <View style={[
       styles.wrap,
       {
-        // 動態計算底部距離，避開 iPhone 底部的橫條
         bottom: Math.max(insets.bottom + 10, 24),
+        backgroundColor: C.white,
       },
     ]}>
+      {/* 滑動指示線 — 外層 wrapper 一個 tab 寬度，內層 24px 小線置中 */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          styles.indicatorWrapper,
+          {
+            width: `${100 / tabCount}%`,
+            transform: [{
+              translateX: indicatorAnim.interpolate({
+                inputRange: state.routes.map((_, i) => i),
+                outputRange: state.routes.map((_, i) => `${i * 100}%`),
+              }),
+            }],
+          },
+        ]}
+      >
+        <View style={[styles.indicatorLine, { backgroundColor: C.pink }]} />
+      </Animated.View>
       <View style={styles.row}>
         {state.routes.map((route, i) => {
           const focused = state.index === i;
           const tab     = TABS[i];
-          const c       = TAB_COLORS[i];
 
           const handlePress = () => {
             if (route.name === 'Profile') {
@@ -56,24 +98,21 @@ function TabBar({ state, navigation }) {
               style={styles.item}
               activeOpacity={0.7}
             >
-              {/* 上方短色線改為在 icon 正上方微調 */}
-              {focused && (
-                <View style={[styles.indicator, { backgroundColor: c }]} />
-              )}
               <Ionicons
                 name={focused ? tab.iconActive : tab.icon}
-                size={22}
-                color={focused ? colors.ink : colors.ink4}
+                size={21}
+                color={focused ? C.black : 'rgba(0,0,0,0.32)'}
               />
               <Text style={[
                 styles.label,
                 {
-                  color: focused ? colors.ink : colors.ink4,
-                  fontWeight: focused ? '700' : '500',
+                  color: focused ? C.black : 'rgba(0,0,0,0.32)',
+                  fontFamily: focused ? Fonts.sansBlack : Fonts.sansMed,
                 },
               ]}>
                 {tab.zh}
               </Text>
+              {/* 不再在這裡畫橫線 — 改由父層 slidingIndicator 滑動到正確位置 */}
             </TouchableOpacity>
           );
         })}
@@ -98,45 +137,51 @@ export default function TabNavigator() {
 
 const styles = StyleSheet.create({
   wrap: {
-    // 讓導覽列變成懸浮的白色膠囊
     position: 'absolute',
     alignSelf: 'center',
     width: '88%',
     height: 64,
-    backgroundColor: '#FFFFFF',
     borderRadius: 32,
-    borderWidth: 2,
-    borderColor: '#000000', // 加上黑邊呼應整體像素風格
-    // 陰影設定
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 8,
+    // backgroundColor 由元件用 usePAL 動態指定（隨 dim 模式切換）
+    // 輕柔陰影取代黑色硬框
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.10,
+    shadowRadius: 8,
+    elevation: 6,
   },
   row: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
+    borderRadius: 32,
   },
   item: {
     flex: 1,
     height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 2,
+    gap: 1,
     position: 'relative',
   },
-  indicator: {
+  // 滑動指示線外層（一個 tab 寬度，跟著 active 滑動）
+  indicatorWrapper: {
     position: 'absolute',
-    top: 6, // 往下移一點才不會切到圓角
-    width: 20,
+    bottom: 7,
+    left: 0,
+    height: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // 真正的小線（在 wrapper 內置中）
+  indicatorLine: {
+    width: 24,
     height: 3,
     borderRadius: 1.5,
   },
   label: {
     fontSize: 10,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
 });
