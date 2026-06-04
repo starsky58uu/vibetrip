@@ -5,6 +5,7 @@
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "start": "expo start",
+    "update:preview": "eas update --branch preview --platform android",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
