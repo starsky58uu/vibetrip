@@ -4,6 +4,7 @@ import {
   Alert, Image, Dimensions, Animated, Easing,
 } from 'react-native';
 import * as Location from 'expo-location';
+import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useNavigation } from '@react-navigation/native';
@@ -13,7 +14,6 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { Fonts } from '../../constants/theme';
 import { VIBES } from '../../data/vibeData';
-import ShakeScreen from './ShakeScreen';
 import { apiPost } from '../../services/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import { usePAL } from '../../context/DimContext';
@@ -359,7 +359,6 @@ export default function TripScreen() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="TripMain" component={TripMain} />
-      <Stack.Screen name="Shake" component={ShakeScreen} />
     </Stack.Navigator>
   );
 }
@@ -479,6 +478,15 @@ function TripMain({ route }) {
     }
   }, [route?.params?.vibeKey, route?.params?.refreshKey]);
 
+  // 換一批：把當前 trip id 加入 exclude，直接走標準 loading 流程
+  const triggerReshake = useCallback(() => {
+    if (loading) return;
+    try { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); } catch {}
+    const exclude = _tripCache?.id ? [...excludeIds, _tripCache.id] : excludeIds;
+    setExcludeIds(exclude);
+    fetchTrip(exclude);
+  }, [excludeIds, loading]);
+
   const handleSaveTrip = useCallback(async () => {
     if (!trip) return;
     setSaving(true);
@@ -585,7 +593,8 @@ function TripMain({ route }) {
             resizeMode="contain"
           />
         </View>
-      </View>
+        {/* 換一批動畫覆蓋層（即使在 loading 也保持）*/}
+              </View>
     );
   }
 
@@ -690,14 +699,13 @@ function TripMain({ route }) {
       <View style={[styles.bottomBar, { paddingBottom: Math.max(insets.bottom + 90, 100) }]}>
         <View style={styles.btnWrapper}>
           <View style={[styles.offsetShadow, { backgroundColor: C.blue }]} />
-          <TouchableOpacity
+          <PressBtn
             style={[styles.shakePill, { backgroundColor: C.white }]}
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate('Shake', { vibeKey })}
+            onPress={triggerReshake}
           >
             <Ionicons name="refresh" size={20} color={C.black} style={{ marginRight: 6 }} />
             <Text style={[styles.shakeText, { color: C.black }]}>換一批</Text>
-          </TouchableOpacity>
+          </PressBtn>
         </View>
 
         <View style={[styles.btnWrapper, { flex: 1 }]}>
@@ -723,7 +731,9 @@ function TripMain({ route }) {
           </PressBtn>
         </View>
       </View>
-    </View>
+
+      {/* 換一批動畫覆蓋層（蓋住主畫面）*/}
+          </View>
   );
 }
 
