@@ -81,16 +81,18 @@ export async function apiDelete(path) {
 }
 
 // ── Multipart 上傳（圖片）────────────────────────────────────────────────────
-// ⚠️  不能手動設 Content-Type：FormData 需要瀏覽器/fetch 自動加 multipart boundary
-export async function apiUpload(path, formData) {
+// ⚠️ 不能手動設 Content-Type：FormData 需要 fetch 自動加 multipart boundary
+// 預設 timeout 提升到 30 秒（上傳幾 MB 的圖在慢網很可能 > 8 秒）
+const UPLOAD_TIMEOUT_MS = 30000;
+export async function apiUpload(path, formData, opts = {}) {
   if (!isConfigured()) throw new Error('API_NOT_CONFIGURED');
   const headers = {};
   if (_token) headers['Authorization'] = `Bearer ${_token}`;
-  const res = await fetchWithTimeout(`${BASE}${path}`, {
-    method: 'POST',
-    headers,
-    body: formData,
-  });
+  const res = await fetchWithTimeout(
+    `${BASE}${path}`,
+    { method: 'POST', headers, body: formData },
+    opts.timeoutMs ?? UPLOAD_TIMEOUT_MS,
+  );
   if (!res.ok) await throwApiError(res, path);
   return res.json();
 }

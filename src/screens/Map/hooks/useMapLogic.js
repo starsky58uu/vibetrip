@@ -183,11 +183,22 @@ export const useMapLogic = ({ isLoggedIn = false } = {}) => {
     // RN 的 FormData 需要 { uri, name, type } 三件套
     const ext  = uri.split('.').pop().toLowerCase().split('?')[0];
     const mime = (ext === 'png') ? 'image/png' : 'image/jpeg';
-    fd.append('file', { uri, name: `spot.${ext || 'jpg'}`, type: mime });
+    // ⚠️ 不能用簡寫，部分 RN 版本對 type 字串嚴格
+    fd.append('file', {
+      uri,
+      name: `spot.${ext || 'jpg'}`,
+      type: mime,
+    });
 
-    const res = await apiUpload('/api/v1/uploads/image', fd);
-    // 後端通常回 { url } 或 { image_url } 之一
-    return res?.url ?? res?.image_url ?? res?.path ?? null;
+    try {
+      const res = await apiUpload('/api/v1/uploads/image', fd, { timeoutMs: 60000 });
+      // 後端通常回 { url } 或 { image_url } 之一
+      const url = res?.url ?? res?.image_url ?? res?.path ?? null;
+      if (!url) throw new Error('伺服器未回傳圖片網址');
+      return url;
+    } catch (e) {
+      throw new Error(`圖片上傳失敗：${e.message}`);
+    }
   };
 
   const saveAndCloseSpot = async () => {

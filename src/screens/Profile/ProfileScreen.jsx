@@ -896,12 +896,16 @@ function RegisterScreen({ navigation }) {
     setError('');
     if (!username || !password) { setError('請填寫帳號與密碼'); return; }
     if (!email)                 { setError('請填寫 Email'); return; }
+    // Email 格式驗證：local@domain.tld，至少要有 @、一個 . 在 @ 之後，TLD ≥ 2 字
+    // 這個 regex 擋住所有「亂打」常見情況（純文字、缺 @、缺 .、@ 後沒東西、空白等）
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRe.test(email.trim())) { setError('Email 格式不正確'); return; }
     if (!/^[a-zA-Z0-9_]+$/.test(username)) { setError('帳號只能使用英文、數字、底線'); return; }
     if (username.length < 3)    { setError('帳號至少 3 個字元'); return; }
     if (password.length < 8)    { setError('密碼至少 8 個字元'); return; }
     setLoading(true);
     try {
-      await register(username, email, password, dispName);
+      await register(username.trim(), email.trim(), password, dispName.trim());
       navigation.goBack();
     } catch (e) {
       if (e.status === 409) {
