@@ -66,12 +66,27 @@ export const useMapLogic = () => {
   };
 
   const saveAndCloseSpot = () => {
-    if (selectedSpot) {
-      setMySpots(mySpots.map(s => 
+    if (!selectedSpot) {
+      setSelectedSpot(null);
+      return;
+    }
+    // 判斷是「編輯舊足跡」還是「新增足跡」
+    const exists = mySpots.some(s => s.id === selectedSpot.id);
+    if (exists) {
+      // 編輯：替換對應 id
+      setMySpots(mySpots.map(s =>
         s.id === selectedSpot.id ? { ...s, note: editingNote, imageUri: editingImage } : s
       ));
+    } else {
+      // 新增：把目前選的點 + 備注 + 照片塞進清單
+      setMySpots(prev => [
+        ...prev,
+        { ...selectedSpot, note: editingNote, imageUri: editingImage },
+      ]);
     }
     setSelectedSpot(null);
+    setEditingNote('');
+    setEditingImage(null);
   };
 
   // 社群互動邏輯
@@ -104,12 +119,27 @@ export const useMapLogic = () => {
     }));
   };
 
-  // 圖片選擇器
+  // 圖片選擇器（expo-image-picker 17.x 的新 API：mediaTypes 用字串陣列）
   const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [4, 3], quality: 0.8, 
-    });
-    if (!result.canceled) setEditingImage(result.assets[0].uri); 
+    try {
+      // 先確認權限
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        console.warn('[useMapLogic] 沒有相簿權限');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],   // 新 API：'images' / 'videos' / 'livePhotos'
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        setEditingImage(result.assets[0].uri);
+      }
+    } catch (e) {
+      console.warn('[useMapLogic] pickImage 失敗', e.message);
+    }
   };
 
   return {
