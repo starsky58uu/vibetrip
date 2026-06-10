@@ -5,7 +5,11 @@
   "scripts": {
     "preinstall": "npx only-allow pnpm",
     "start": "expo start",
-    "update:preview": "eas update --branch preview --platform android",
+    "start:dev": "expo start",
+    "build:preview": "eas build --profile preview --platform all",
+    "build:production": "eas build --profile production --platform all",
+    "update:preview": "cross-env APP_VARIANT=preview eas update --branch preview --channel preview --platform all",
+    "update:production": "cross-env APP_VARIANT=production eas update --branch production --channel production --platform all",
     "android": "expo run:android",
     "ios": "expo run:ios"
   },
@@ -36,6 +40,9 @@
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-svg": "^15.15.4"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
   },
   "private": true
 }

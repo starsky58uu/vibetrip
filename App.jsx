@@ -18,6 +18,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { DimProvider } from './src/context/DimContext';
 import { PAL_BRIGHT } from './src/constants/palette';
+import EnvBanner from './src/components/EnvBanner';
 
 function AppContent() {
   const { loading } = useAuth();
@@ -33,6 +34,7 @@ function AppContent() {
     <View style={{ flex: 1 }}>
       <StatusBar barStyle="dark-content" backgroundColor={PAL_BRIGHT.yellow} />
       <AppNavigator />
+      <EnvBanner />
     </View>
   );
 }

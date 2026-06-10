@@ -1,7 +1,9 @@
 // Thin wrapper around the VibeTrip backend API
-const BASE = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+import { API_BASE_URL, isApiConfigured } from '../config/env';
 
-const isConfigured = () => !!BASE;
+const BASE = API_BASE_URL;
+
+const isConfigured = isApiConfigured;
 
 // ── Timeout helper ────────────────────────────────────────────────────────────
 const TIMEOUT_MS = 8000; // 8 秒沒回應就放棄（預設）
