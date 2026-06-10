@@ -10,7 +10,7 @@ import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 
 import { Fonts } from '../../constants/theme';
-import { apiGet, apiPost } from '../../services/apiClient';
+import { apiGet, apiPost, apiUpload } from '../../services/apiClient';
 import { useAuth } from '../../context/AuthContext';
 import MapScreen from '../Map/MapScreen';
 import { usePAL } from '../../context/DimContext';
@@ -361,12 +361,31 @@ function CreatePostModal({ visible, userLoc, onClose, onCreated }) {
 
   const handleSubmit = async () => {
     if (!content.trim()) { Alert.alert('請填寫內容'); return; }
-    if (!userLoc) { Alert.alert('無法取得位置'); return; }
     setSubmitting(true);
     try {
+      // 位置非必填：有就用、沒有就 fallback 台北車站，不擋使用者
+      const lat = userLoc?.latitude  ?? 25.0478;
+      const lon = userLoc?.longitude ?? 121.5172;
+
+      // 圖片若是本機 file:// → 先 multipart 上傳拿 https URL，避免後端 422
+      let imageUrl = imageUri;
+      if (imageUrl?.startsWith('file://')) {
+        try {
+          const fd = new FormData();
+          const ext = imageUrl.split('.').pop().toLowerCase().split('?')[0];
+          const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+          fd.append('file', { uri: imageUrl, name: `post.${ext || 'jpg'}`, type: mime });
+          const up = await apiUpload('/api/v1/uploads/image', fd);
+          imageUrl = up?.url ?? up?.image_url ?? up?.path ?? null;
+        } catch (e) {
+          console.warn('[ExploreScreen] 圖片上傳失敗', e.message);
+          imageUrl = null;
+        }
+      }
+
       await apiPost('/api/v1/spots/personal', {
-        latitude: userLoc.latitude, longitude: userLoc.longitude,
-        note: content.trim(), image_url: imageUri ?? undefined, is_public: isPublic,
+        latitude: lat, longitude: lon,
+        note: content.trim(), image_url: imageUrl ?? undefined, is_public: isPublic,
       });
       const mock = {
         id: `temp_${Date.now()}`, author: { username: 'me', display_name: '我', avatar_url: null },
