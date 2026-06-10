@@ -4,7 +4,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DUMMY_COMMUNITY_SPOTS } from '../constants/mapData';
-import { apiGet, apiPost } from '../../../services/apiClient';
+import { Alert } from 'react-native';
+import { apiGet, apiPost, apiUpload } from '../../../services/apiClient';
 
 const LOCAL_SPOTS_KEY = 'vt_local_spots';   // 未登入時的本地足跡
 
@@ -172,41 +173,73 @@ export const useMapLogic = ({ isLoggedIn = false } = {}) => {
   };
 
   // ── 儲存足跡（關閉 modal 時呼叫）──────────────────────────────────────────
+  // 把 expo-image-picker 給的 file:// URI 上傳到後端，拿到真正的 https URL
+  const uploadImageIfNeeded = async (uri) => {
+    if (!uri) return null;
+    // 已經是 http(s) URL → 不用再上傳
+    if (uri.startsWith('http://') || uri.startsWith('https://')) return uri;
+
+    const fd = new FormData();
+    // RN 的 FormData 需要 { uri, name, type } 三件套
+    const ext  = uri.split('.').pop().toLowerCase().split('?')[0];
+    const mime = (ext === 'png') ? 'image/png' : 'image/jpeg';
+    fd.append('file', { uri, name: `spot.${ext || 'jpg'}`, type: mime });
+
+    const res = await apiUpload('/api/v1/uploads/image', fd);
+    // 後端通常回 { url } 或 { image_url } 之一
+    return res?.url ?? res?.image_url ?? res?.path ?? null;
+  };
+
   const saveAndCloseSpot = async () => {
     if (!selectedSpot) return;
 
-    const updated = { ...selectedSpot, note: editingNote, imageUri: editingImage };
+    try {
+      // Step 1: 圖片若是本機 file:// → 先上傳換成 https URL
+      let imageUrl = editingImage;
+      if (isLoggedIn && editingImage?.startsWith('file://')) {
+        imageUrl = await uploadImageIfNeeded(editingImage);
+      }
 
-    if (isLoggedIn) {
-      // ── 有登入：同步至後端 ───────────────────────────────────────────────
-      try {
-        if (selectedSpot.synced && typeof selectedSpot.id === 'string' && !selectedSpot.id.startsWith('local_')) {
-          // 已在後端存在的 spot → PATCH (若後端有此端點)
-          // 目前後端無 PATCH /spots/personal/:id，故保持原狀
-        } else {
-          // 新足跡 → POST
+      const updated = {
+        ...selectedSpot,
+        note:     editingNote,
+        imageUri: imageUrl ?? editingImage,
+      };
+
+      // Step 2: 同步到後端 / AsyncStorage
+      if (isLoggedIn) {
+        const isLocal = typeof selectedSpot.id === 'string' && selectedSpot.id.startsWith('local_');
+        if (isLocal || !selectedSpot.synced) {
           const res = await apiPost('/api/v1/spots/personal', {
             latitude:  selectedSpot.lat,
             longitude: selectedSpot.lng,
             note:      editingNote,
-            image_url: editingImage ?? undefined,
+            image_url: imageUrl ?? undefined,
             is_public: false,
           });
-          // 把後端給的真實 id 寫回去
           updated.id     = res.id ?? updated.id;
           updated.synced = true;
         }
-      } catch (e) {
-        console.warn('[useMapLogic] 足跡上傳失敗', e.message);
+      } else {
+        const newList = mySpots.map(s => s.id === selectedSpot.id ? updated : s);
+        await saveLocalSpots(newList);
       }
-    } else {
-      // ── 未登入：存進 AsyncStorage ────────────────────────────────────────
-      const newList = mySpots.map(s => s.id === selectedSpot.id ? updated : s);
-      await saveLocalSpots(newList);
-    }
 
-    setMySpots(prev => prev.map(s => s.id === selectedSpot.id ? updated : s));
-    setSelectedSpot(null);
+      // Step 3: 成功 → 更新地圖 + 關閉 modal
+      setMySpots(prev => prev.map(s => s.id === selectedSpot.id ? updated : s));
+      setSelectedSpot(null);
+      setEditingNote('');
+      setEditingImage(null);
+
+    } catch (e) {
+      // 失敗時不關 modal，明確告訴使用者
+      console.warn('[useMapLogic] 足跡上傳失敗', e.message);
+      Alert.alert(
+        '儲存失敗',
+        `${e.message || '請稍後再試'}\n（網路或後端問題，您的內容還在）`,
+        [{ text: '知道了' }],
+      );
+    }
   };
 
   // ── 從 TripScreen 儲存整趟行程為足跡 pins ──────────────────────────────────
