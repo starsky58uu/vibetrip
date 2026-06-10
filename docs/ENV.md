@@ -18,6 +18,8 @@ cp .env.production.example .env.production
 # 填入 EXPO_PUBLIC_GOOGLE_API_KEY
 ```
 
+> `.env`、`.env.local`、`.env.preview`、`.env.production` 已在 `.gitignore`，勿提交 git。團隊共用金鑰請用安全管道（1Password 等）傳給新成員。
+
 ## 本機開發（連 dev backend）
 
 1. 後端：`docker compose … --profile dev up api-dev`（見 vibetrip-backend/docs/DEV_AND_PROD.md）
