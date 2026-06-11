@@ -4,179 +4,240 @@
 
 ---
 
-## 1. 整體導覽結構（Navigation Tree）
+## 1. 主流程一張圖（核心黃金路徑）
+
+> **VibeTrip 的核心體驗：選 vibe → 看行程 → AR 導覽**
+
+```mermaid
+flowchart LR
+    A[🏠 主頁<br/>HomeScreen] -->|點動物選 vibe<br/>vibeKey=cafe| B[🗓 行程頁<br/>TripScreen]
+    B -->|AI 即時生成 3 站行程| B
+    B -->|搖一搖換一批<br/>排除舊 trip id| B
+    B -->|點「開始導覽 →」<br/>傳 tripItems| C[📷 AR 導覽<br/>ArScreen 全螢幕]
+    C -->|拍照 / 錄影<br/>存成個人足跡| D[🗺 地圖<br/>看自己今天去哪]
+
+    style A fill:#E2E146,stroke:#000,stroke-width:2px
+    style B fill:#FF6FA8,stroke:#000,stroke-width:2px,color:#fff
+    style C fill:#2E45B0,stroke:#000,stroke-width:2px,color:#fff
+    style D fill:#FBF6F0,stroke:#000,stroke-width:2px
+```
+
+---
+
+## 2. 整體導覽結構（Navigation Tree）
+
+> 反映實際 Navigator 嵌套關係。AR 在頂層 Stack（全螢幕），其他 4 個都在 TabNavigator 裡。
 
 ```mermaid
 graph TD
-    Root[App.jsx] --> Nav[AppNavigator]
-    Nav --> Tabs[MainTabs]
-    Nav --> AR[AR 全螢幕 Stack]
+    Root["App.jsx<br/>(Providers: Auth + Dim)"] --> Nav["AppNavigator<br/>Native Stack"]
 
-    Tabs --> Home[🏠 主頁]
-    Tabs --> Trip[🗓 行程]
-    Tabs --> Explore[🌏 探索]
-    Tabs --> Profile[👤 個人]
+    Nav --> Tabs["MainTabs<br/>Bottom Tab Navigator"]
+    Nav -.全螢幕模態.-> AR["📷 AR (ArScreen)<br/>fullScreenModal"]
 
-    Trip --> TripMain[TripMain]
-    Trip --> EmptyState[EmptyTripState<br/>未選 vibe 時]
+    Tabs --> Home["🏠 Home<br/>HomeScreen"]
+    Tabs --> TripTab["🗓 Trip<br/>TripScreen Stack"]
+    Tabs --> Explore["🌏 Explore<br/>ExploreScreen"]
+    Tabs --> ProfileTab["👤 Profile<br/>ProfileScreen Stack"]
 
-    Profile --> ProfileMain[個人主頁]
-    Profile --> Login[登入]
-    Profile --> Register[註冊]
-    Profile --> Weather[天氣]
-    Profile --> Capsules[我的膠囊]
-    Profile --> Saved[收藏地標]
+    TripTab --> TripMain["TripMain<br/>(內含 EmptyState/Loading/Error 三種狀態)"]
 
-    Explore --> Map[地圖]
-    Explore --> Community[社群]
+    Explore -->|內部切換 tab state| ExpMap["MapScreen 子畫面"]
+    Explore -->|內部切換 tab state| ExpCom["Community Feed"]
+
+    ProfileTab --> ProfileMain["ProfileMain"]
+    ProfileTab --> Login["LoginScreen"]
+    ProfileTab --> Register["RegisterScreen"]
+    ProfileTab --> Weather["WeatherScreen"]
+    ProfileTab --> Capsules["MyCapsulesScreen"]
+    ProfileTab --> Saved["SavedSpotsScreen"]
 
     style Root fill:#FF6FA8,color:#fff
     style AR fill:#2E45B0,color:#fff
     style Home fill:#E2E146
-    style Trip fill:#E2E146
+    style TripTab fill:#FF6FA8,color:#fff
     style Explore fill:#E2E146
-    style Profile fill:#E2E146
+    style ProfileTab fill:#E2E146
 ```
 
 ---
 
-## 2. 使用者主要旅程（User Journey）
+## 3. 使用者主要旅程（時序圖）
 
 ```mermaid
 sequenceDiagram
     actor User as 旅人
-    participant Home as 主頁
-    participant Trip as 行程頁
-    participant API as 後端 AI
-    participant AR as AR 導覽
+    participant Home as 🏠 主頁
+    participant Trip as 🗓 行程頁
+    participant API as 後端 (FastAPI)
+    participant AI as Groq Llama 3.3
+    participant AR as 📷 AR 導覽
+    participant Map as 🗺 地圖
 
     User->>Home: 開啟 App
-    Note over Home: 看到 vibe 動物動畫<br/>左右滑動瀏覽
-    User->>Home: 點某隻動物（例：咖啡）
-    Home->>Trip: navigate(vibeKey='cafe')
+    Note over Home: 13 隻 vibe 動物<br/>左右滑動
 
-    Trip->>Trip: 顯示 LoadingWaves
-    Trip->>API: POST /trips/recommend<br/>{vibe, lat, lon}
-    Note over API: Groq Llama 3.3<br/>+ Google Places
-    API-->>Trip: 行程資料（3-4 站）
-    Trip->>User: 顯示彩色膠囊列<br/>StaggerPill 進場
+    User->>Home: 摸動物（觸覺回饋 + 噴愛心）
+    User->>Home: 點咖啡浣熊（選 vibe）
+    Home->>Trip: navigate('Trip', { vibeKey: 'cafe' })
 
-    alt 不滿意行程
+    Trip->>Trip: 顯示海浪 loading
+    Trip->>API: POST /trips/recommend<br/>{vibe_key, lat, lon}
+    API->>API: Google Places 搜尋附近店家
+    API->>AI: 給候選店家 + vibe 規則
+    AI-->>API: 行程 JSON（3 站）
+    API-->>Trip: 完整行程
+
+    Trip->>User: 行程膠囊 stagger 進場<br/>（彩色 + 虛線連接）
+
+    opt 不滿意
         User->>Trip: 點「換一批」
-        Trip->>API: POST 加 exclude_trip_ids
-        API-->>Trip: 新行程
+        Trip->>API: POST 加 exclude_trip_ids=[舊 id]
+        API-->>Trip: 完全不同的 3 站
     end
 
-    User->>Trip: 點「開始導覽」CTA
-    Trip->>AR: navigate('AR', tripItems)
+    User->>Trip: 點「開始導覽 →」CTA
+    Trip->>AR: navigate('AR', { tripItems })
 
-    Note over AR: 相機 + AR overlay<br/>指南針 + 距離
-    AR-->>User: 逐站導引
+    AR->>User: 相機畫面 + 指南針
+    Note over AR: 逐站引導<br/>箭頭指向下一站
 
-    alt 拍照記錄
-        User->>AR: 按拍照
-        AR->>AR: saveModal（足跡存雲端）
-    end
+    User->>AR: 抵達拍照
+    AR->>API: POST /uploads/image (multipart)
+    API-->>AR: https 圖片 URL
+    AR->>API: POST /spots/personal { lat, lon, image_url }
+
+    User->>Map: 切到探索 tab 看地圖
+    Map->>User: 顯示今天的足跡 pin
 ```
 
 ---
 
-## 3. 登入 / 註冊流程
+## 4. 行程頁三狀態切換（狀態機）
 
-```mermaid
-graph LR
-    Start([開始]) --> Check{有無 token<br/>SecureStore}
-    Check -->|有| ValidateToken[呼叫 /users/me]
-    Check -->|無| Guest[訪客模式]
-
-    ValidateToken -->|200| LoggedIn[✅ 已登入]
-    ValidateToken -->|401| ClearToken[清空 token]
-    ClearToken --> Guest
-
-    Guest --> ClickLogin[點選 Profile → 登入]
-    ClickLogin --> LoginScreen[LoginScreen]
-
-    LoginScreen --> InputLogin[輸入帳號/密碼]
-    InputLogin --> Submit{送出}
-    Submit -->|成功| StoreToken[存 token 到 SecureStore]
-    Submit -->|帳密錯| ErrorMsg[顯示錯誤]
-    ErrorMsg --> InputLogin
-
-    LoginScreen -->|點立即註冊| Register[RegisterScreen]
-    Register --> InputReg[暱稱/Email/帳號/密碼]
-    InputReg --> SubmitReg{送出}
-    SubmitReg -->|成功| StoreToken
-    SubmitReg -->|帳號已存在| ErrorReg[409 已被使用]
-    ErrorReg --> InputReg
-
-    StoreToken --> LoggedIn
-
-    style LoggedIn fill:#AAC9CE,color:#000
-    style Guest fill:#E5C1CD
-    style ErrorMsg fill:#FF6FA8,color:#fff
-    style ErrorReg fill:#FF6FA8,color:#fff
-```
-
----
-
-## 4. 行程生成內部流程
+> 同一個 TripMain 元件根據 state 渲染不同畫面 — 沒選 vibe / 載入中 / 載入失敗 / 行程展示
 
 ```mermaid
 stateDiagram-v2
     [*] --> CheckCache: TripMain 掛載
 
-    CheckCache --> RestoreCache: 有 _tripCache<br/>且無 vibeKey
-    CheckCache --> ShowEmpty: 無快取且<br/>從 Tab 進入
-    CheckCache --> FetchNew: 有 vibeKey<br/>或 refreshKey
+    CheckCache --> EmptyTripState: 從 Tab 直接進入<br/>+ 無 _tripCache
+    CheckCache --> ShowTrip: 從 Tab 進入<br/>+ 有 _tripCache
+    CheckCache --> Loading: 從 HomeScreen 帶 vibeKey 進入
 
-    ShowEmpty --> EmptyTripState: 顯示動物+對話框<br/>「先去主頁選個行程吧」
-    EmptyTripState --> [*]: 點「回主頁」
+    EmptyTripState --> [*]: 點「回主頁選 Vibe」<br/>navigate('Home')
 
-    RestoreCache --> ShowTrip
-    FetchNew --> Loading: setLoading(true)
-    Loading --> GetLocation: requestForegroundPermissions
-    GetLocation --> CallAPI: POST /trips/recommend
-    CallAPI --> ApplyTimes: applyCurrentTimes()<br/>套用現在時間
-    ApplyTimes --> SaveCache: _tripCache = result
-    SaveCache --> ShowTrip: 顯示彩色膠囊
+    Loading --> CallAPI: 顯示海浪動畫
+    CallAPI --> ApplyTimes: POST /trips/recommend
+    ApplyTimes --> ShowTrip: 套用當下時間 + 寫 _tripCache
     CallAPI --> ShowError: 25 秒 timeout
 
-    ShowError --> RetryButton
-    RetryButton --> Loading: 點重新探索
+    ShowError --> Loading: 點「重新探索」
 
-    ShowTrip --> ShakeAction: 點換一批
-    ShakeAction --> AddExclude: excludeIds.push(currentId)
-    AddExclude --> Loading
+    ShowTrip --> ShakeReshape: 點「換一批」
+    ShakeReshape --> Loading: 把當前 trip id 加 exclude
 
-    ShowTrip --> NavAR: 點開始導覽
-    NavAR --> [*]: navigate AR
+    ShowTrip --> NavAR: 點「開始導覽 →」
+    NavAR --> [*]: navigate('AR', tripItems)
 
-    note right of ApplyTimes
-        後端回傳的 time 是固定字串
-        前端依當下時間重算每站時段
+    note right of CheckCache
+        _tripCache 是 module-level let
+        跨 Tab 切換存活
+        App 重啟才清空
     end note
 ```
 
 ---
 
-## 5. 低明度模式（Dim Mode）切換
+## 5. 登入 / 註冊流程
 
 ```mermaid
 graph LR
-    Boot[App 啟動] --> ReadStorage[AsyncStorage<br/>讀 vt_dim_mode]
-    ReadStorage --> InitDim{值 = '1'?}
-    InitDim -->|是| DimOn[dim=true<br/>PAL=PAL_DIM]
-    InitDim -->|否| DimOff[dim=false<br/>PAL=PAL_BRIGHT]
+    Start([App 啟動]) --> Check{SecureStore<br/>有 token?}
+    Check -->|有| Validate["GET /users/me<br/>驗 token"]
+    Check -->|無| Guest[訪客模式<br/>可瀏覽不可上傳]
+
+    Validate -->|200 OK| LoggedIn["✅ 已登入<br/>(AuthContext.user)"]
+    Validate -->|401| ClearToken[清空 token]
+    ClearToken --> Guest
+
+    Guest --> NavLogin["Profile Tab → 點登入"]
+    NavLogin --> LoginScreen["LoginScreen<br/>(輸入帳密)"]
+
+    LoginScreen --> Submit{送出}
+    Submit -->|成功| StoreToken[SecureStore.set]
+    Submit -->|失敗| ShowErr["顯示「帳號或密碼錯誤」"]
+    ShowErr --> LoginScreen
+
+    LoginScreen -->|點立即註冊| RegScreen["RegisterScreen<br/>(暱稱/Email/帳號/密碼)"]
+    RegScreen --> SubmitReg{送出}
+    SubmitReg -->|409 Conflict| AlreadyUsed[此帳號或 Email 已被使用]
+    SubmitReg -->|422 Validation| BadFormat[格式不正確]
+    SubmitReg -->|成功| StoreToken
+    AlreadyUsed --> RegScreen
+    BadFormat --> RegScreen
+
+    StoreToken --> LoggedIn
+
+    style LoggedIn fill:#AAC9CE,color:#000
+    style Guest fill:#E5C1CD
+    style ShowErr fill:#FF6FA8,color:#fff
+```
+
+---
+
+## 6. AR 導覽流程
+
+```mermaid
+graph TD
+    Enter[從 TripScreen 點開始導覽] --> CheckPerm{權限檢查}
+    CheckPerm -->|無相機權限| AskCam[請求 Camera permission]
+    CheckPerm -->|無位置權限| AskLoc[請求 Location permission]
+    AskCam --> CheckPerm
+    AskLoc --> CheckPerm
+    CheckPerm -->|全部允許| ShowCamera["📷 CameraView<br/>+ AR overlay 指南針"]
+
+    ShowCamera --> Compass[指南針指向當前站]
+    Compass --> Arrive{抵達目的?}
+    Arrive -->|否| Compass
+    Arrive -->|是| NextStop{還有下一站?}
+    NextStop -->|是| Compass
+    NextStop -->|否| Complete[🎉 行程完成]
+
+    ShowCamera --> QuickTools[側邊快捷工具拉環]
+    QuickTools --> Photo[📸 拍照]
+    QuickTools --> Video[🎥 錄影]
+    QuickTools --> Emergency[🚨 110 報案]
+
+    Photo --> Upload["POST /uploads/image<br/>(multipart)"]
+    Upload --> SaveSpot["POST /spots/personal<br/>(含 https image_url)"]
+    SaveSpot --> Done[存進相簿 + 雲端足跡]
+
+    style ShowCamera fill:#2E45B0,color:#fff
+    style Complete fill:#AAC9CE
+    style Emergency fill:#FF6FA8,color:#fff
+```
+
+---
+
+## 7. 低明度模式切換（DimContext）
+
+```mermaid
+graph LR
+    Boot[App 啟動] --> ReadStore["AsyncStorage<br/>讀 vt_dim_mode"]
+    ReadStore --> InitDim{值 = '1'?}
+    InitDim -->|是| DimOn["dim=true<br/>pal=PAL_DIM (莫蘭迪)"]
+    InitDim -->|否| DimOff["dim=false<br/>pal=PAL_BRIGHT (鮮豔)"]
 
     DimOn --> Provider[DimContext.Provider]
     DimOff --> Provider
 
     Provider --> Screens[所有 Screen]
-    Screens --> UsePAL[usePAL hook<br/>取當前 C]
+    Screens --> UsePAL["usePAL() hook<br/>讀 C = current palette"]
 
-    UserToggle[個人頁點「低明度模式」] --> Toggle{toggleDim}
-    Toggle --> WriteStorage[AsyncStorage 寫入]
-    Toggle --> ReRender[整個 App<br/>重新 render]
+    UserToggle["Profile → 點「低明度模式」"] --> Toggle["toggleDim()"]
+    Toggle --> WriteStore[AsyncStorage 寫入新值]
+    Toggle --> ReRender[Context value 改變<br/>整 App re-render]
     ReRender --> Screens
 
     style DimOn fill:#AAC9CE
@@ -185,95 +246,36 @@ graph LR
 
 ---
 
-## 6. AR 導覽動作流程
-
-```mermaid
-graph TD
-    Enter[從行程點開始導覽] --> CheckPerm{權限檢查}
-    CheckPerm -->|無相機權限| AskCam[請求 Camera]
-    CheckPerm -->|無位置權限| AskLoc[請求 Location]
-    AskCam --> CheckPerm
-    AskLoc --> CheckPerm
-    CheckPerm -->|全部允許| ShowCamera[CameraView<br/>+ AR overlay]
-
-    ShowCamera --> StateA{視圖模式}
-
-    StateA -->|NAV| Compass[指南針指向<br/>下一站]
-    StateA -->|SEARCH| SearchBar[搜尋附近<br/>店家]
-    StateA -->|LIST| TripList[行程列表<br/>逐站查看]
-
-    Compass --> Arrive{到達當前站?}
-    Arrive -->|否| Compass
-    Arrive -->|是| NextStop[切下一站]
-    NextStop --> Compass
-
-    Compass --> TakePhoto[按拍照]
-    TakePhoto --> Capture[expo-camera<br/>takePictureAsync]
-    Capture --> SaveModal[儲存 Modal]
-
-    SaveModal -->|寫備注 + 儲存| UploadSpot[POST /spots/personal]
-    SaveModal -->|略過| ToLib[只存相簿]
-
-    UploadSpot --> SaveLib[同時存相簿]
-    SaveLib --> Done([完成])
-    ToLib --> Done
-```
-
----
-
-## 7. 互動動畫總覽
-
-```mermaid
-graph TD
-    Home[主頁]
-    Trip[行程頁]
-    Profile[個人頁]
-
-    Home -->|摸動物| Pet[Haptic Light<br/>+ scale 1.12<br/>+ 噴 3 顆白愛心]
-    Home -->|滑 vibe| Swipe[ScrollView snap<br/>+ Image opacity 切幀]
-
-    Trip -->|進場| Stagger[StaggerPill<br/>每 90ms 一條<br/>translateY 24→0]
-    Trip -->|點 CTA| PressScale[PressBtn<br/>spring 0.96→1]
-    Trip -->|loading| Waves[海浪橫向 loop<br/>+ 視差兩層<br/>+ loading 圖切幀]
-
-    Profile -->|進場| StaggerMenu[StaggerItem<br/>每 70ms 一條]
-    Profile -->|頭像| ImagePicker[expo-image-picker<br/>+ AsyncStorage]
-
-    TabBar[底部 TabBar] -->|切 tab| SlideIndicator[粉色橫線<br/>spring 滑動<br/>friction 8]
-```
-
----
-
-## 8. 資料流（State Management）
+## 8. 全域資料流（State / Persistence）
 
 ```mermaid
 graph TB
-    subgraph Module["模組層快取"]
-        TripCache[_tripCache<br/>let module var]
+    subgraph Module["📦 模組層快取（App 開啟期間）"]
+        TripCache[_tripCache<br/>let module variable]
     end
 
-    subgraph Persistent["持久化 (AsyncStorage / SecureStore)"]
-        TokenStore[vt_token<br/>SecureStore]
-        AvatarStore[vt_avatar_uri<br/>AsyncStorage]
-        DimStore[vt_dim_mode<br/>AsyncStorage]
-        SavedTrips[vt_saved_trips<br/>AsyncStorage]
+    subgraph Persistent["💾 持久化儲存"]
+        TokenStore["vt_token<br/>(SecureStore 加密)"]
+        AvatarStore["vt_avatar_uri<br/>(AsyncStorage)"]
+        DimStore["vt_dim_mode<br/>(AsyncStorage)"]
+        SavedTrips["vt_saved_trips<br/>(AsyncStorage)"]
     end
 
-    subgraph Context["全域 Context"]
-        AuthCtx[AuthContext<br/>user + token]
-        DimCtx[DimContext<br/>pal + dim flag]
+    subgraph Context["🌐 全域 Context"]
+        AuthCtx["AuthContext<br/>user, login, logout"]
+        DimCtx["DimContext<br/>pal, toggleDim"]
     end
 
-    subgraph Local["元件 useState"]
-        TripState[TripScreen<br/>trip, loading, error]
-        HomeState[HomeScreen<br/>activeIdx, hearts]
-        ProfileState[ProfileScreen<br/>stats, avatarUri]
+    subgraph Local["⚛️ 元件 useState"]
+        TripState["TripScreen<br/>trip, loading, error"]
+        HomeState["HomeScreen<br/>activeIdx, hearts"]
+        ProfileState["ProfileScreen<br/>stats, avatarUri"]
     end
 
-    TokenStore -.恢復.-> AuthCtx
-    DimStore -.恢復.-> DimCtx
-    AvatarStore -.恢復.-> ProfileState
-    AvatarStore -.恢復.-> HomeState
+    TokenStore -.開機還原.-> AuthCtx
+    DimStore -.開機還原.-> DimCtx
+    AvatarStore -.開機還原.-> ProfileState
+    AvatarStore -.開機還原.-> HomeState
 
     AuthCtx --> HomeState
     AuthCtx --> ProfileState
@@ -281,7 +283,7 @@ graph TB
     DimCtx -->|usePAL| HomeState
     DimCtx -->|usePAL| ProfileState
 
-    TripState <-.快取.-> TripCache
+    TripState <-.讀寫.-> TripCache
     SavedTrips -.讀寫.-> TripState
 
     style TokenStore fill:#FF6FA8,color:#fff
@@ -292,41 +294,14 @@ graph TB
 
 ---
 
-## 9. 全域旅程（Happy Path Story）
-
-```mermaid
-journey
-    title 一個下午的 VibeTrip 體驗
-    section 開 App
-      開啟並看動畫: 5: 旅人
-      左右滑找喜歡的 vibe: 5: 旅人
-      摸了一下浣熊（好可愛）: 5: 旅人, 浣熊
-    section 選行程
-      點咖啡浣熊: 5: 旅人
-      看海浪載入動畫: 4: 旅人
-      行程出現（3 站咖啡店）: 5: 旅人
-      搖一搖換一份: 3: 旅人
-    section 開始導覽
-      按開始導覽: 5: 旅人
-      AR 指南針帶路: 5: 旅人, AR
-      抵達第一站拍照: 5: 旅人
-      存到雲端足跡: 4: 旅人
-    section 回家
-      在地圖看自己今天去哪: 5: 旅人
-      到社群看別人去哪: 4: 旅人
-      晚上切低明度護眼: 5: 旅人
-```
-
----
-
-## 10. 後端 API 呼叫流程
+## 9. 後端 API 呼叫流程（以行程生成為例）
 
 ```mermaid
 sequenceDiagram
     participant App as VibeTrip App
     participant Client as apiClient.js
-    participant API as FastAPI
-    participant DB as PostgreSQL
+    participant API as FastAPI :8000
+    participant DB as PostgreSQL<br/>+ PostGIS
     participant Cache as Redis
     participant LLM as Groq Llama 3.3
     participant Google as Google Places
@@ -337,18 +312,80 @@ sequenceDiagram
 
     API->>Cache: 查 vibe+location 快取
     alt Cache hit
-        Cache-->>API: 返回快取行程
+        Cache-->>API: 直接回快取結果
     else Cache miss
         API->>Google: 搜尋附近店家
         Google-->>API: 候選列表
-        API->>LLM: 根據 vibe 推薦組合
-        LLM-->>API: 行程 JSON
-        API->>Cache: 寫入快取（含 trip id）
+        API->>API: 過濾即將打烊的店
+        API->>LLM: 給 vibe 規則 + 候選店家
+        LLM-->>API: 行程 JSON（3 站）
+        API->>API: validate_activities()<br/>驗證 schema
+        API->>API: enrich_distances()<br/>補站間距離
+        API->>Cache: 寫入快取 (TTL 30 分鐘)
     end
 
-    API->>DB: 寫入 trips 紀錄
+    API->>DB: 寫入 trips 紀錄（給 exclude 用）
     DB-->>API: trip.id
     API-->>Client: 200 { id, title, items }
     Client-->>App: 解析 JSON
-    App->>App: applyCurrentTimes + setTrip
+    App->>App: applyCurrentTimes()<br/>套當下時間 + setTrip()
+```
+
+---
+
+## 10. 圖片上傳兩階段流程
+
+> 修過 bug 之後的正確流程：本機 file:// 先換成 https URL，再寫入 spot
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Picker as expo-image-picker
+    participant App as VibeTrip App
+    participant API as FastAPI
+
+    User->>App: 點「上傳照片」
+    App->>Picker: launchImageLibraryAsync()<br/>mediaTypes: ['images']
+    Picker-->>App: file:///var/.../photo.jpg<br/>(本機 URI)
+    App->>User: 顯示預覽
+
+    User->>App: 寫備註 + 點儲存
+
+    Note over App: ⚠️ file:// 後端拿不到<br/>必須先上傳
+
+    App->>API: POST /api/v1/uploads/image<br/>(multipart, FormData)
+    API->>API: 存進 /app/uploads/ volume
+    API-->>App: { url: "https://...../xxx.jpg" }
+
+    App->>API: POST /api/v1/spots/personal<br/>{ lat, lon, image_url: 上面拿到的 url }
+    API-->>App: 201 Created { id, ... }
+
+    App->>User: ✅ 顯示新足跡<br/>關閉 Modal
+```
+
+---
+
+## 11. 全域旅程故事板
+
+```mermaid
+journey
+    title 一個下午的 VibeTrip 體驗
+    section 主頁
+      開啟 App 看動物動畫: 5: 旅人
+      左右滑找喜歡的 vibe: 5: 旅人
+      摸了一下浣熊（好可愛）: 5: 旅人
+    section 行程
+      點咖啡浣熊: 5: 旅人
+      看海浪 loading: 4: 旅人
+      行程出現（3 站咖啡店）: 5: 旅人
+      搖一搖換一份: 3: 旅人
+    section 導覽
+      按開始導覽 CTA: 5: 旅人
+      AR 指南針帶路: 5: 旅人
+      抵達第一站拍照: 5: 旅人
+      自動存雲端足跡: 4: 旅人
+    section 回家
+      切到地圖看今天去哪: 5: 旅人
+      到社群看別人去哪: 4: 旅人
+      晚上切低明度模式護眼: 5: 旅人
 ```
