@@ -30,9 +30,13 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*
-!.env.example
+# --- 環境變數（含 API 金鑰）---
+# 明確列出要忽略的檔名；範本 *.example 不在此列，可正常 commit
+.env
+.env.local
+.env.preview
+.env.production
+.env.development
 
 # typescript
 *.tsbuildinfo
@@ -40,8 +44,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
-
-# --- 補充建議 ---
 
 # IDEs and Editors
 .idea/

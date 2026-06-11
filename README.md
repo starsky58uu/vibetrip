@@ -41,18 +41,22 @@
 # 1. 安裝相依
 pnpm install
 
-# 2. 環境變數（複製範本後填值）
+# 2. 環境變數（見 docs/ENV.md）
 cp .env.example .env
-#   EXPO_PUBLIC_API_BASE_URL=http://<你的 LAN IP>:8000
-#   EXPO_PUBLIC_GOOGLE_API_KEY=AIzaSy...
+cp .env.local.example .env.local   # 本機 dev：LAN IP + :8001
+cp .env.preview.example .env.preview
+cp .env.production.example .env.production
+# 填入 EXPO_PUBLIC_GOOGLE_API_KEY
 
-# 3. 啟動 Metro
+# 3. 本機 Metro（.env.local → dev API 或 .env → 正式 API）
 pnpm start
+```
 
-# 開發階段用 Expo Go App 掃 QR
-# 要測 AR / 地圖原生功能：
-pnpm ios       # 連 iPhone 用 USB
-pnpm android   # 連 Android 用 USB
+**環境對照** → [docs/ENV.md](docs/ENV.md)（本機 dev / EAS preview / production）
+
+```bash
+# 舊：只填 .env 一個檔
+# 新：.env = 正式預設；本機改 .env.local；EAS 用 update:preview / update:production
 ```
 
 ### 後端
@@ -210,14 +214,19 @@ Fonts.sansBlack  → Black    // 標題、品牌字
 
 ## 部署
 
-### EAS Build
+### EAS Build & Update
 
 ```bash
-eas build --platform ios --profile production
-eas build --platform android --profile production
+pnpm build:preview       # 首次：建 preview 原生包（internal APK 等）
+pnpm update:preview -- --message "試新 UI"
+
+pnpm build:production    # 商店 / 正式包
+pnpm update:production -- --message "1.0.1 修正"
 ```
 
-設定在 `eas.json`。production 啟用 `autoIncrement`。
+設定在 `eas.json`（`preview` / `production` channel + API URL）。production 啟用 `autoIncrement`。
+
+詳見 [docs/ENV.md](docs/ENV.md)。
 
 ### 上架前 checklist
 

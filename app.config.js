@@ -1,4 +1,8 @@
-import 'dotenv/config';
+import { getAppVariant, loadEnvFiles } from './scripts/load-env.js';
+
+loadEnvFiles();
+
+const appVariant = getAppVariant();
 
 export default {
     expo: {
@@ -6,8 +10,10 @@ export default {
         slug: 'vibetrip',
         extra: {
             eas: {
-                projectId: "d47fb124-39cd-4fb8-b71f-18bfb731fde5" 
-            }
+                projectId: "d47fb124-39cd-4fb8-b71f-18bfb731fde5"
+            },
+            appVariant,
+            apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ?? '',
         },
         updates: {
             url: "https://u.expo.dev/d47fb124-39cd-4fb8-b71f-18bfb731fde5"
